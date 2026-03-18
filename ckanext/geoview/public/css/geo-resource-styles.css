@@ -92,3 +92,7 @@
 .badge[data-format=arcgis_rest] {
     background-color: #5c3ee0;
 }
+
+.badge[data-format=arcgis_rest_img] {
+    background-color: #5c3ee0;
+}

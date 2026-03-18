@@ -2340,6 +2340,78 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         return deferredResult
     }
 
+    OL_HELPERS.withArcGisImageLayers = function (url, layerProcessor, layerNames, map, proxyServiceUrl) {
+
+        var deferredResult = $.Deferred();
+        var deferredLayers = [];
+
+        if (!Array.isArray(layerNames)) {
+            if (typeof layerNames == 'string')
+                layerNames = [layerNames];
+            else
+                layerNames = undefined;
+        }
+
+        var descriptorUrl = proxyServiceUrl
+            ? (proxyServiceUrl + (proxyServiceUrl.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson')
+            : (url + (url.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson');
+
+        parseArcGisDescriptor(
+            descriptorUrl,
+            function (descriptor) {
+                var selectedIds = layerNames;
+                var extentDescriptor = descriptor;
+
+                if (descriptor.type == 'Feature Layer') {
+                    if ((!selectedIds || !selectedIds.length) && descriptor.id !== undefined) {
+                        selectedIds = [String(descriptor.id)];
+                    }
+                } else if (!descriptor.type && descriptor.layers) {
+                    var leafLayers = descriptor.layers.filter(function(layer) {
+                        return !layer.subLayerIds;
+                    });
+
+                    if (selectedIds && selectedIds.length) {
+                        leafLayers = leafLayers.filter(function(layer) {
+                            return selectedIds.indexOf(String(layer.id)) >= 0;
+                        });
+                    }
+
+                    if (!selectedIds || !selectedIds.length) {
+                        selectedIds = leafLayers.map(function(layer) {
+                            return String(layer.id);
+                        });
+                    }
+
+                    if (leafLayers.length === 1) {
+                        extentDescriptor = leafLayers[0];
+                    }
+                }
+
+                var deferredLayer = $.Deferred();
+                deferredLayers.push(deferredLayer);
+
+                var newLayer = OL_HELPERS.createArcgisRestImageLayer(url, extentDescriptor, true, map, selectedIds);
+                layerProcessor && layerProcessor(newLayer);
+                deferredLayer.resolve(newLayer);
+
+                $.when.apply($, deferredLayers).then(
+                    function() {
+                        deferredResult.resolve(Array.from(arguments));
+                    },
+                    function (err) {
+                        deferredResult.reject(err);
+                    }
+                );
+            },
+            function(err) {
+                deferredResult.reject(err);
+            }
+        );
+
+        return deferredResult
+    }
+
     OL_HELPERS.parseArcgisExtent = function(extentObj, targetSrs) {
 
         targetSrs = targetSrs || 'EPSG:4326';
@@ -2900,6 +2972,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         'gpkg': 'application/vnd.opengeospatial.geopackage+sqlite3',
         'wmts': 'service/wmts',
         'arcgis_rest': 'application/vnd.esri.arcgis.rest',
+        'arcgis_rest_img': 'application/vnd.esri.arcgis.rest',
         'geojson' : 'application/geo+json',
         'json' : 'application/json'
     };
@@ -2972,6 +3045,8 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             return OL_HELPERS.withFeatureTypesLayers(proxyUri, layerAdder, resourceNames /*FTname*/, map, true /* useGET */);
         } else if (matchExtension("arcgis_rest")) {
             return OL_HELPERS.withArcGisLayers(url, layerAdder, resourceNames /*layername*/, proxifyFn , map);
+        } else if (matchExtension("arcgis_rest_img")) {
+            return OL_HELPERS.withArcGisImageLayers(url, layerAdder, resourceNames /*layername*/, map);
         } else if (matchExtension("wfs3")) {
             return OL_HELPERS.withWFS3Types(proxyUri, layerAdder, resourceNames /*FTname*/, map, proxifyFn);
         } else if (matchExtension("gpkg")) {

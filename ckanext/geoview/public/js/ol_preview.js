@@ -27,6 +27,14 @@
             OL_HELPERS.withArcGisLayers(originalUrl, layerProcessor, layerName, proxifyFn, map, proxyServiceUrl);
         }
 
+        var esrirestImageExtractor = function(resource, proxyUrl, proxyServiceUrl, layerProcessor, map) {
+            var parsedUrl = resource.url.split('#');
+            var originalUrl = parsedUrl[0];
+            var layerName = parsedUrl.length > 1 && parsedUrl[1];
+
+            OL_HELPERS.withArcGisImageLayers(originalUrl, layerProcessor, layerName, map, proxyServiceUrl);
+        }
+
         ckan.geoview.layerExtractors = {
 
             'kml': function (resource, proxyUrl, proxyServiceUrl, layerProcessor, map) {
@@ -72,6 +80,8 @@
             },
             'arcgis_rest': esrirestExtractor ,
             'esri rest': esrirestExtractor ,
+            'arcgis_rest_img': esrirestImageExtractor ,
+            'esri rest img': esrirestImageExtractor ,
             'gft': function (resource, proxyUrl, proxyServiceUrl, layerProcessor, map) {
                 var tableId = OL_HELPERS.parseURL(resource.url).query.docid;
                 layerProcessor(OL_HELPERS.createGFTLayer(tableId, ckan.geoview.gapi_key));

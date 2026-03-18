@@ -95,7 +95,8 @@ The formats and services supported are:
 | GeoJSON                   | `geojson`           |
 | GML                       | `gml`               |
 | KML                       | `kml`               |
-| ArcGIS REST API           | `arcgis_rest`       |
+| ArcGIS REST API (features) | `arcgis_rest`       |
+| ArcGIS REST API (image export) | `arcgis_rest_img`       |
 | Google Fusion Tables      | `gft`               |
 
 (*) Resource formats are case insensitive
@@ -104,7 +105,7 @@ Support varies across formats, so you might want to deactivate the ones you are 
 To choose which formats to display, set the following configuration option:
 
 ```
-ckanext.geoview.ol_viewer.formats = wms kml
+ckanext.geoview.ol_viewer.formats = wms kml arcgis_rest arcgis_rest_img
 ```
 
 To render Google Fusion Tables resources, a Google API Key must be provided in the ini file:
@@ -385,3 +386,12 @@ To publish a new version to PyPI follow these steps:
    git tag 0.2.3
    git push --tags
    ```
+
+
+`arcgis_rest` uses the ArcGIS REST feature query workflow (`/query`) and supports selecting a sublayer with a `#<layer_id>` suffix, for example:
+
+```
+https://example.org/arcgis/rest/services/MyService/MapServer#0
+```
+
+`arcgis_rest_img` uses ArcGIS REST image export rendering (`/export`) and also supports selecting a sublayer with a `#<layer_id>` suffix.

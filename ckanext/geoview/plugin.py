@@ -69,6 +69,7 @@ class OLGeoView(GeoViewMixin, GeoViewBase):
         "esrigeojson",
         "gft",
         "arcgis_rest",
+        "arcgis_rest_img",
         "wmts",
         "esri rest",
     ]
