@@ -67,6 +67,10 @@ if (window.Proj4js) {
 
     proj4.defs("EPSG:28992", "+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 +k=0.999908 +x_0=155000 +y_0=463000 +ellps=bessel +units=m +towgs84=565.2369,50.0087,465.658,-0.406857330322398,0.350732676542563,-1.8703473836068,4.0812 +no_defs <>");
     proj4.defs("EPSG:3812", "+proj=lcc +lat_1=49.83333333333334 +lat_2=51.16666666666666 +lat_0=50.797815 +lon_0=4.359215833333333 +x_0=649328 +y_0=665262 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
+    proj4.defs("EPSG:25832", "+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs");
+    if (ol.proj.proj4 && ol.proj.proj4.register) {
+        ol.proj.proj4.register(proj4);
+    }
 
 }
 
@@ -906,10 +910,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
 
 
     var parseArcGisDescriptor = function (url, callback, failCallback) {
-
-        var params = {f: "pjson"};
-
-        fetch(url + (url.indexOf('?')>=0?'&':'?') + kvp2string(params),
+        fetch(url,
             {method:'GET', credentials: 'include'}
         ).then(
             function(response) {
@@ -2255,7 +2256,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         return deferredResult
     }
 
-    OL_HELPERS.withArcGisLayers = function (url, layerProcessor, layerNames, proxifyFn, map) {
+    OL_HELPERS.withArcGisLayers = function (url, layerProcessor, layerNames, proxifyFn, map, proxyServiceUrl) {
 
         var deferredResult = $.Deferred()
 
@@ -2268,19 +2269,21 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 layerNames = undefined
         }
 
-        //TODO filter on layerNames
-
         proxifyFn = proxifyFn || function(url) {return url;}
 
+        var descriptorUrl = proxyServiceUrl
+            ? (proxyServiceUrl + (proxyServiceUrl.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson')
+            : (url + (url.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson');
+
         parseArcGisDescriptor(
-            proxifyFn(url),
+            descriptorUrl,
             function (descriptor) {
 
                 if (descriptor.type == "Feature Layer") {
                     var deferredLayer = $.Deferred();
                     deferredLayers.push(deferredLayer);
-                    var queryUrl = proxifyFn(url + "/query");
-                    var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, descriptor, true, map)
+                    var queryUrl = url + "/query";
+                    var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, descriptor, true, map, proxifyFn)
                     layerProcessor && layerProcessor(newLayer);
 
                     deferredLayer.resolve(newLayer);
@@ -2295,10 +2298,14 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                                 layer.extent = descriptor.initialExtent || descriptor.fullExtent;
                             }
 
+                            if (layerNames && layerNames.indexOf(String(layer.id)) < 0) {
+                                return;
+                            }
+
                             var deferredLayer = $.Deferred();
                             deferredLayers.push(deferredLayer);
-                            var queryUrl = proxifyFn(url + "/" + layer.id + "/query");
-                            var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, layer, isFirst, map);
+                            var queryUrl = url + "/" + layer.id + "/query";
+                            var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, layer, isFirst, map, proxifyFn);
                             layerProcessor && layerProcessor(newLayer);
                             isFirst = false;
                             deferredLayer.resolve(newLayer);
@@ -2314,9 +2321,11 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         deferredResult.reject(err);
                     });
 
+            },
+            function(err) {
+                deferredResult.reject(err);
             }
         )
-        //TODO catch and reject
 
         return deferredResult
     }
@@ -2324,6 +2333,10 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
     OL_HELPERS.parseArcgisExtent = function(extentObj, targetSrs) {
 
         targetSrs = targetSrs || 'EPSG:4326';
+
+        if (!extentObj) {
+            return undefined;
+        }
 
         var ext = [
             extentObj.xmin,
@@ -2333,16 +2346,32 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         ];
         // take advertised srs; 4326 if none
         var srs = 'EPSG:'+ (extentObj.spatialReference ? extentObj.spatialReference.wkid : 4326);
+        var sourceProj = ol.proj.get(srs);
+        var targetProj = ol.proj.get(targetSrs);
 
-        return ol.proj.transformExtent(ext, ol.proj.get(srs), ol.proj.get(targetSrs));
+        if (srs === targetSrs) {
+            return ext;
+        }
+
+        if (!sourceProj || !targetProj) {
+            return ext;
+        }
+
+        try {
+            return ol.proj.transformExtent(ext, sourceProj, targetProj);
+        } catch (e) {
+            return ext;
+        }
     }
 
-    OL_HELPERS.createArcgisFeatureLayer = function (url, descriptor, visible, map) {
+    OL_HELPERS.createArcgisFeatureLayer = function (url, descriptor, visible, map, proxifyFn) {
+
+        proxifyFn = proxifyFn || function(u) { return u; };
 
         var format = new ol.format.EsriJSON();
 
         var defaultQueryParams = {
-            "dummy" : 1,
+            "where" : "1=1",
             "geometryType" : "esriGeometryEnvelope",
             "inSR" : "4326",
             "spatialRel" : "esriSpatialRelIntersects",
@@ -2354,81 +2383,80 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             "returnZ" : false,
             "returnM" : false,
             "returnDistinctValues" : false,
-            "f" : "pjson"
-        }
+            "resultRecordCount" : MAX_FEATURES,
+            "f" : "json"
+        };
+
+        var source = new ol.source.Vector({
+            loader: function (extent, resolution, mapProjection) {
+                var outSrs = OL_HELPERS.EPSG4326;
+
+                var queryParams = _.extend(
+                    {},
+                    defaultQueryParams,
+                    {
+                        "geometry" : extent.join(','),
+                        "inSR" : mapProjection.getCode().split(':').pop(),
+                        "outSR" : outSrs.getCode().split(':').pop()
+                    }
+                );
+
+                source.setState(ol.source.State.LOADING)
+
+                var requestUrl = proxifyFn(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams));
+
+                return fetch(requestUrl,
+                                 {method:'GET'}
+                                 // can't use credentials:include here with AGOL, because they send back
+                                 // Access-Control-Allow-Origin: *, and the combination doesn't work.
+                ).then(
+                    function (response) {
+                        return response.text();
+                    }
+                ).then(
+                    function (text) {
+
+                        var features = format.readFeatures(text, {featureProjection: mapProjection, dataProjection: outSrs});
+
+                        // generate fid from properties hash to avoid multiple insertion of same feature
+                            // (when max_features strategy is applied and features have no intrisic ID)
+                            features.forEach(function(feature) {
+                            if (feature.getId() === undefined) {
+                                if (feature.get("OBJECTID"))
+                                    feature.setId(feature.get("OBJECTID"));
+                                else {
+                                    var hashkey = new ol.format.GeoJSON().writeFeature(feature).hashCode();
+                                    feature.setId(hashkey);
+                                }
+                            }
+                        })
+
+                        source.addFeatures(features);
+
+                        var moreToLoad = features.length >= MAX_FEATURES;
+                        source.set('partial_load', moreToLoad);
+                        source.setState(ol.source.State.READY);
+
+                        return moreToLoad
+                    }
+                ).catch(function (ex) {
+                        source.setState(ol.source.State.ERROR);
+                        console.warn("ArcGIS GetFeatures failed");
+                        console.warn(ex);
+                    })
+            },
+            strategy: ol.loadingstrategy.bbox
+        });
 
         var layer = new ol.layer.Vector({
             style: OL_HELPERS.DEFAULT_STYLEMAP.default,
             title: descriptor.name,
-            source: new ol.source.Vector({
-                loader: function (extent, resolution, mapProjection) {
-                    var outSrs = OL_HELPERS.EPSG4326;
-
-                    var queryParams = _.extend(
-                        {},
-                        defaultQueryParams,
-                        {
-                            "geometry" : extent.join(','),
-                            "inSR" : mapProjection.getCode().split(':').pop(),
-                            "outSR" : outSrs.getCode().split(':').pop()
-                        }
-                    )
-
-                    layer.getSource().setState(ol.source.State.LOADING)
-
-                    return fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams),
-                                 {method:'GET'}
-                                 // can't use credentials:include here with AGOL, because they send back
-                                 // Access-Control-Allow-Origin: *, and the combination doesn't work.
-                    ).then(
-                        function (response) {
-                            return response.text();
-                        }
-                    ).then(
-                        function (text) {
-
-                            var features = format.readFeatures(text, {featureProjection: mapProjection, dataProjection: outSrs});
-
-                            // generate fid from properties hash to avoid multiple insertion of same feature
-                            // (when max_features strategy is applied and features have no intrisic ID)
-                            features.forEach(function(feature) {
-                                if (feature.getId() === undefined) {
-                                    if (feature.get("OBJECTID"))
-                                        feature.setId(feature.get("OBJECTID"));
-                                    else {
-                                        var hashkey = new ol.format.GeoJSON().writeFeature(feature).hashCode();
-                                        feature.setId(hashkey);
-                                    }
-                                }
-                            })
-
-                            layer
-                                .getSource()
-                                .addFeatures(features);
-
-                            var moreToLoad = features.length >= MAX_FEATURES;
-                            layer.getSource().set('partial_load', moreToLoad);
-                            layer.getSource().setState(ol.source.State.READY);
-
-                            return moreToLoad
-                        }
-                    ).catch(function (ex) {
-                            layer.getSource().setState(ol.source.State.ERROR);
-                            console.warn("ArcGIS GetFeatures failed");
-                            console.warn(ex);
-                        })
-                },
-                strategy: ol.loadingstrategy.bbox
-            }),
+            source: source,
             visible : visible
         });
 
-
         layer.getSource().getFeatureById = function(id) {
-
-
             var outSrs = OL_HELPERS.EPSG4326;
-
             var queryParams = _.extend(
                 {},
                 defaultQueryParams,
@@ -2439,11 +2467,11 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 }
             )
 
+            var requestUrl = proxifyFn(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams));
             var promise = $.Deferred();
 
-
-            fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams),
-                {method:'GET', credentials: 'include'}
+            fetch(requestUrl,
+                {method:'GET'}
             ).then(
                 function (response) {
                     return response.text();
@@ -2476,14 +2504,12 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             return promise;
         }
 
-
         if (!descriptor.bounds && descriptor.extent) {
             descriptor.bounds = OL_HELPERS.parseArcgisExtent (descriptor.extent);
         }
 
         layer.getSource().set('name', descriptor.name);
         layer.getSource().set('arcgisDescr', descriptor);
-        // override getExtent to take advertised bbox into account first
         layer.getSource().getFullExtent = getArcGISVectorExtent;
 
         return layer;
