@@ -928,15 +928,15 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             }
         ).then(
             function(text) {
-                var descriptor = JSON.parse(text)
-                callback(descriptor)
+                var descriptor = JSON.parse(text);
+                callback(descriptor);
             }
         ).catch(failCallback ||
                 function(ex) {
                     console.warn("Trouble getting ArcGIS descriptor");
                     console.warn(ex);
                 }
-        )
+        );
     }
 
     var fetchWFSCapas = function (url, callback, failCallback) {
@@ -2359,41 +2359,87 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         parseArcGisDescriptor(
             descriptorUrl,
             function (descriptor) {
-                var selectedIds = layerNames;
-                var extentDescriptor = descriptor;
 
-                if (descriptor.type == 'Feature Layer') {
-                    if ((!selectedIds || !selectedIds.length) && descriptor.id !== undefined) {
-                        selectedIds = [String(descriptor.id)];
-                    }
-                } else if (!descriptor.type && descriptor.layers) {
-                    var leafLayers = descriptor.layers.filter(function(layer) {
-                        return !layer.subLayerIds;
+                var serviceExtent = descriptor.initialExtent || descriptor.fullExtent || descriptor.extent;
+
+                var createExportLayer = function(layerId, title, visible) {
+                    var deferredLayer = $.Deferred();
+                    deferredLayers.push(deferredLayer);
+
+                    var rawExportUrl = url + '/export';
+
+                    var source = new ol.source.ImageArcGISRest({
+                        url: rawExportUrl,
+                        ratio: 1,
+                        crossOrigin: 'anonymous',
+                        params: {
+                            LAYERS: 'show:' + layerId,
+                            FORMAT: 'png32',
+                            TRANSPARENT: true,
+                            F: 'image'
+                        },
+                        imageLoadFunction: function(image, src) {
+                            //// MB_debug_log
+                            console.log('ArcGIS export src direct:', src);
+                            ////
+                            image.getImage().src = src;
+                        }
                     });
 
-                    if (selectedIds && selectedIds.length) {
-                        leafLayers = leafLayers.filter(function(layer) {
-                            return selectedIds.indexOf(String(layer.id)) >= 0;
-                        });
+                    var newLayer = new ol.layer.Image({
+                        title: title,
+                        visible: visible,
+                        source: source
+                    });
+
+                    if (serviceExtent && map && map.getView()) {
+                        var mapProjection = map.getView().getProjection().getCode();
+
+                        var bounds = OL_HELPERS.parseArcgisExtent(
+                            serviceExtent,
+                            mapProjection
+                        );
+
+                        if (bounds) {
+                            source.set('arcgisDescr', {
+                                bounds: bounds
+                            });
+                            source.getFullExtent = function() {
+                                return bounds;
+                            };
+                            newLayer.set('extent', bounds);
+                            if (visible) {
+                                map.getView().fit(bounds, {
+                                    size: map.getSize(),
+                                    padding: [20, 20, 20, 20],
+                                    maxZoom: 18
+                                });
+                            }
+                        }
                     }
 
-                    if (!selectedIds || !selectedIds.length) {
-                        selectedIds = leafLayers.map(function(layer) {
-                            return String(layer.id);
-                        });
-                    }
+                    layerProcessor && layerProcessor(newLayer);
+                    deferredLayer.resolve(newLayer);
+                };
 
-                    if (leafLayers.length === 1) {
-                        extentDescriptor = leafLayers[0];
-                    }
+                if (descriptor.type === 'Feature Layer') {
+                    var singleId = layerNames && layerNames.length ? layerNames[0] : 0;
+                    createExportLayer(singleId, descriptor.name || descriptor.displayField || 'ArcGIS layer', true);
+                } else if (!descriptor.type && descriptor.layers) {
+                    var firstVisible = true;
+
+                    $_.each(descriptor.layers, function(layer) {
+                        if (layer.subLayerIds) {
+                            return;
+                        }
+                        if (layerNames && layerNames.indexOf(String(layer.id)) < 0) {
+                            return;
+                        }
+
+                        createExportLayer(layer.id, layer.name, firstVisible);
+                        firstVisible = false;
+                    });
                 }
-
-                var deferredLayer = $.Deferred();
-                deferredLayers.push(deferredLayer);
-
-                var newLayer = OL_HELPERS.createArcgisRestImageLayer(url, extentDescriptor, true, map, selectedIds);
-                layerProcessor && layerProcessor(newLayer);
-                deferredLayer.resolve(newLayer);
 
                 $.when.apply($, deferredLayers).then(
                     function() {
@@ -2613,7 +2659,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                             var hashkey = new ol.format.GeoJSON().writeFeature(feature).hashCode();
                             feature.setId(hashkey);
                         }
-                    })
+                    });
 
                     promise.resolve(features.length>0 && features[0]);
                 }
@@ -2621,7 +2667,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     console.warn("GetFeatureById failed on "+layer.getSource().get('name')+" / "+id+" : "+ex);
                     console.warn(ex);
                     promise.reject(ex);
-                })
+                });
 
             return promise;
         };
