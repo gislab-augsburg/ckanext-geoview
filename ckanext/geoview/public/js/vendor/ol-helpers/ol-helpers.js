@@ -68,6 +68,13 @@ if (window.Proj4js) {
     proj4.defs("EPSG:28992", "+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 +k=0.999908 +x_0=155000 +y_0=463000 +ellps=bessel +units=m +towgs84=565.2369,50.0087,465.658,-0.406857330322398,0.350732676542563,-1.8703473836068,4.0812 +no_defs <>");
     proj4.defs("EPSG:3812", "+proj=lcc +lat_1=49.83333333333334 +lat_2=51.16666666666666 +lat_0=50.797815 +lon_0=4.359215833333333 +x_0=649328 +y_0=665262 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
 
+    //// MB_bugfix arcgis_rest
+    proj4.defs("EPSG:25832", "+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs");
+    if (ol.proj.proj4 && ol.proj.proj4.register) {
+        ol.proj.proj4.register(proj4);
+    }
+    ////
+
 }
 
 // duplicate this code to avoid a dependency on internal class ol.<...>.Projection_
@@ -423,11 +430,17 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         var _thisMap = this;
                         var msgDiv = $(this.msgDiv)
                             .text("More features to load ")
+                            //// MB_bugfix arcgis_rest
                             .append($("<button>Reload in current view</button>").click(function() {
                                 _thisMap.partiallyLoadedSources.forEach(function(src) {
-                                    src.clear();
+                                    if (src.mbForceReload) {
+                                        src.mbForceReload();
+                                    } else {
+                                        src.clear();
+                                    }
                                 })
                             }))
+                            ////
                         _thisMap.partiallyLoadedSources.forEach(function(src) {
                             if (src.get('next_page')) {
                                 msgDiv.append($("<button>Next page</button>").click(function() {
@@ -477,12 +490,18 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         var _thisMap = this;
                         $(this.errorDiv)
                             .text("Layers in error - See console for details ")
+                            //// MB_bugfix arcgis_rest
                             .append($("<button>Retry</button>").click(function() {
                                 _thisMap.erroredSources.forEach(function(src) {
                                     src.setState(ol.source.State.READY);
-                                    src.clear();
+                                    if (src.mbForceReload) {
+                                        src.mbForceReload();
+                                    } else {
+                                        src.clear();
+                                    }
                                 })
                             }))
+                            ////
                     }
                     else if (hasErrors) {
                         var _this = this;
@@ -552,8 +571,9 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     }
                 }
 
+                //// MB_bugfix arcgis_rest
                 var pls_idx = _this.partiallyLoadedSources.indexOf(loadingObj);
-                if (loadingObj.get && loadingObj.get('partial_load')) {
+                if (loadingObj.get && (loadingObj.get('partial_load') || loadingObj.get('mb_arcgis_feature_reloadable'))) {
                     if (pls_idx == -1) {
                         _this.partiallyLoadedSources.push(loadingObj);
                         _this.dispatchEvent("change:partiallyLoaded");
@@ -564,6 +584,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         _this.dispatchEvent("change:partiallyLoaded")
                     }
                 }
+                ////
 
                 var idx = _this.loadingObjects.indexOf(loadingObj)
                 if (idx >= 0) {
@@ -590,14 +611,18 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             });
 
             layer.on('change:visible', function(e) {
+                //// MB_bugfix arcgis_rest
                 var pls_idx = _this.partiallyLoadedSources.indexOf(this.getSource());
-                if (this.getVisible() && this.getSource().get('partial_load')) {
-                    _this.partiallyLoadedSources.push(this.getSource());
-                    _this.dispatchEvent("change:partiallyLoaded");
+                if (this.getVisible() && (this.getSource().get('partial_load') || this.getSource().get('mb_arcgis_feature_reloadable'))) {
+                    if (pls_idx < 0) {
+                        _this.partiallyLoadedSources.push(this.getSource());
+                        _this.dispatchEvent("change:partiallyLoaded");
+                    }
                 } else if (!this.getVisible() && pls_idx >= 0) {
                     _this.partiallyLoadedSources.splice(pls_idx, 1);
                     _this.dispatchEvent("change:partiallyLoaded")
                 }
+                ////
 
                 var es_idx = _this.erroredSources.indexOf(this.getSource());
                 if (this.getVisible() && this.getSource().getState() == ol.source.State.ERROR) {
@@ -904,12 +929,9 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         }
     }
 
-
+    //// MB_bugfix arcgis_rest
     var parseArcGisDescriptor = function (url, callback, failCallback) {
-
-        var params = {f: "pjson"};
-
-        fetch(url + (url.indexOf('?')>=0?'&':'?') + kvp2string(params),
+        fetch(url,
             {method:'GET', credentials: 'include'}
         ).then(
             function(response) {
@@ -917,16 +939,17 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             }
         ).then(
             function(text) {
-                var descriptor = JSON.parse(text)
-                callback(descriptor)
+                var descriptor = JSON.parse(text);
+                callback(descriptor);
             }
         ).catch(failCallback ||
                 function(ex) {
                     console.warn("Trouble getting ArcGIS descriptor");
                     console.warn(ex);
                 }
-        )
+        );
     }
+    ////
 
     var fetchWFSCapas = function (url, callback, failCallback) {
 
@@ -2266,7 +2289,8 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         return deferredResult
     }
 
-    OL_HELPERS.withArcGisLayers = function (url, layerProcessor, layerNames, proxifyFn, map) {
+    //// MB_bugfix arcgis_rest
+    OL_HELPERS.withArcGisLayers = function (url, layerProcessor, layerNames, proxifyFn, map, proxyServiceUrl) {
 
         var deferredResult = $.Deferred()
 
@@ -2279,37 +2303,70 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 layerNames = undefined
         }
 
-        //TODO filter on layerNames
-
         proxifyFn = proxifyFn || function(url) {return url;}
 
+        //// MB_bugfix arcgis_rest
+        //var descriptorUrl = proxyServiceUrl
+        //    ? (proxyServiceUrl + '?f=pjson')
+        //    : (url + (url.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson');
+
+        var descriptorUrl = proxyServiceUrl
+            ? (proxyServiceUrl + (proxyServiceUrl.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson')
+            : (url + (url.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson');
+
+        //// MB_debug_log
+        console.log('ArcGIS descriptorUrl:', descriptorUrl);
+        ////
+
         parseArcGisDescriptor(
-            proxifyFn(url),
+            descriptorUrl,
             function (descriptor) {
+                //// MB_debug_log
+                console.log('ArcGIS descriptor object:', descriptor);
+                console.log('ArcGIS descriptor.type:', descriptor && descriptor.type);
+                console.log('ArcGIS descriptor.layers:', descriptor && descriptor.layers);
+                console.log('ArcGIS layerNames:', layerNames);
+                ////
 
                 if (descriptor.type == "Feature Layer") {
+                    //// MB_debug_log
+                    console.log('ArcGIS descriptor branch: Feature Layer');
+                    ////
                     var deferredLayer = $.Deferred();
                     deferredLayers.push(deferredLayer);
-                    var queryUrl = proxifyFn(url + "/query");
-                    var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, descriptor, true, map)
+                    var queryUrl = url + "/query";
+                    var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, descriptor, true, map, proxifyFn)
                     layerProcessor && layerProcessor(newLayer);
 
                     deferredLayer.resolve(newLayer);
                 } else if (descriptor.type == "Group Layer") {
                     // TODO intermediate layer
                 } else if (!descriptor.type && descriptor.layers) {
+                    //// MB_debug_log
+                    console.log('ArcGIS descriptor branch: MapServer layers list');
+                    ////
                     var isFirst = true
                     $_.each(descriptor.layers, function (layer, idx) {
+                        //// MB_debug_log
+                        console.log('ArcGIS sublayer candidate:', layer);
+                        ////
                         if (!layer.subLayerIds) {
                             // if layer has no extent defined, copy it from global descriptor
                             if (!layer.bounds && !layer.extent) {
                                 layer.extent = descriptor.initialExtent || descriptor.fullExtent;
                             }
 
+                            if (layerNames && layerNames.indexOf(String(layer.id)) < 0) {
+                                //// MB_debug_log
+                                console.log('ArcGIS skipping sublayer:', layer.id);
+                                ////
+                                return;
+                            }
+
                             var deferredLayer = $.Deferred();
                             deferredLayers.push(deferredLayer);
-                            var queryUrl = proxifyFn(url + "/" + layer.id + "/query");
-                            var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, layer, isFirst, map);
+                            var queryUrl = url + "/" + layer.id + "/query";
+                            var newLayer = OL_HELPERS.createArcgisFeatureLayer(queryUrl, layer, isFirst, map, proxifyFn);
                             layerProcessor && layerProcessor(newLayer);
                             isFirst = false;
                             deferredLayer.resolve(newLayer);
@@ -2325,16 +2382,183 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         deferredResult.reject(err);
                     });
 
+            },
+            function(err) {
+                //// MB_debug_log
+                console.log('ArcGIS descriptor load failed:', err);
+                ////
+                deferredResult.reject(err);
             }
         )
         //TODO catch and reject
 
         return deferredResult
     }
+    ////
 
+    //// MB_feature arcgis_rest_img
+    OL_HELPERS.withArcGisImageLayers = function (url, layerProcessor, layerNames, map, proxyServiceUrl) {
+
+        var deferredResult = $.Deferred()
+        var deferredLayers = []
+
+        if (!Array.isArray(layerNames)) {
+            if (typeof layerNames == 'string')
+                layerNames = [layerNames];
+            else
+                layerNames = undefined
+        }
+
+        //// MB_feature arcgis_rest_img
+        //var descriptorUrl = proxyServiceUrl
+        //    ? (proxyServiceUrl + '?f=pjson')
+        //    : (url + (url.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson');
+
+        var descriptorUrl = proxyServiceUrl
+            ? (proxyServiceUrl + (proxyServiceUrl.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson')
+            : (url + (url.indexOf('?') >= 0 ? '&' : '?') + 'f=pjson');
+
+        //// MB_debug_log
+        console.log('ArcGIS image descriptorUrl:', descriptorUrl);
+        ////
+
+        parseArcGisDescriptor(
+            descriptorUrl,
+            function (descriptor) {
+                //// MB_debug_log
+                console.log('ArcGIS descriptor object:', descriptor);
+                console.log('ArcGIS descriptor.type:', descriptor && descriptor.type);
+                console.log('ArcGIS descriptor.layers:', descriptor && descriptor.layers);
+                console.log('ArcGIS layerNames:', layerNames);
+                ////
+
+                var serviceExtent = descriptor.initialExtent || descriptor.fullExtent || descriptor.extent;
+
+                var createExportLayer = function(layerId, title, visible) {
+                    var deferredLayer = $.Deferred();
+                    deferredLayers.push(deferredLayer);
+
+                    var rawExportUrl = url + '/export';
+
+                    var source = new ol.source.ImageArcGISRest({
+                        url: rawExportUrl,
+                        ratio: 1,
+                        crossOrigin: 'anonymous',
+                        params: {
+                            LAYERS: 'show:' + layerId,
+                            FORMAT: 'png32',
+                            TRANSPARENT: true,
+                            F: 'image'
+                        },
+                        imageLoadFunction: function(image, src) {
+                            //// MB_debug_log
+                            console.log('ArcGIS export src direct:', src);
+                            ////
+                            image.getImage().src = src;
+                        }
+                    });
+
+                    var newLayer = new ol.layer.Image({
+                        title: title,
+                        visible: visible,
+                        source: source
+                    });
+
+                    if (serviceExtent && map && map.getView()) {
+                        var mapProjection = map.getView().getProjection().getCode();
+
+                        var bounds = OL_HELPERS.parseArcgisExtent(
+                            serviceExtent,
+                            mapProjection
+                        );
+
+                        if (bounds) {
+                            //// MB_debug_log
+                            console.log('ArcGIS applying extent:', bounds);
+                            ////
+                            source.set('arcgisDescr', {
+                                bounds: bounds
+                            });
+                            source.getFullExtent = function() {
+                                return bounds;
+                            };
+                            newLayer.set('extent', bounds);
+                            if (visible) {
+                                map.getView().fit(bounds, {
+                                    size: map.getSize(),
+                                    padding: [20, 20, 20, 20],
+                                    maxZoom: 18
+                                });
+                            }
+                        }
+                    }
+
+                    //// MB_debug_log
+                    console.log('ArcGIS export layer created:', newLayer);
+                    ////
+                    layerProcessor && layerProcessor(newLayer);
+                    deferredLayer.resolve(newLayer);
+                };
+
+                if (descriptor.type === 'Feature Layer') {
+                    //// MB_debug_log
+                    console.log('ArcGIS descriptor branch: Feature Layer');
+                    ////
+                    var singleId = layerNames && layerNames.length ? layerNames[0] : 0;
+                    createExportLayer(singleId, descriptor.name || descriptor.displayField || 'ArcGIS layer', true);
+                } else if (!descriptor.type && descriptor.layers) {
+                    //// MB_debug_log
+                    console.log('ArcGIS descriptor branch: MapServer layers list');
+                    ////
+                    var firstVisible = true;
+
+                    $_.each(descriptor.layers, function(layer) {
+                        //// MB_debug_log
+                        console.log('ArcGIS sublayer candidate:', layer);
+                        ////
+                        if (layer.subLayerIds) {
+                            return;
+                        }
+                        if (layerNames && layerNames.indexOf(String(layer.id)) < 0) {
+                            //// MB_debug_log
+                            console.log('ArcGIS skipping sublayer:', layer.id);
+                            ////
+                            return;
+                        }
+
+                        createExportLayer(layer.id, layer.name, firstVisible);
+                        firstVisible = false;
+                    });
+                }
+
+                $.when.apply($, deferredLayers).then(
+                    function() {
+                        deferredResult.resolve(Array.from(arguments));
+                    },
+                    function (err) {
+                        deferredResult.reject(err);
+                    });
+            },
+            function(err) {
+                //// MB_debug_log
+                console.log('ArcGIS descriptor load failed:', err);
+                ////
+                deferredResult.reject(err);
+            }
+        )
+
+        return deferredResult
+    }
+    ////
+
+    //// MB_bugfix arcgis_rest
     OL_HELPERS.parseArcgisExtent = function(extentObj, targetSrs) {
 
         targetSrs = targetSrs || 'EPSG:4326';
+
+        if (!extentObj) {
+            return undefined;
+        }
 
         var ext = [
             extentObj.xmin,
@@ -2344,16 +2568,38 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         ];
         // take advertised srs; 4326 if none
         var srs = 'EPSG:'+ (extentObj.spatialReference ? extentObj.spatialReference.wkid : 4326);
+        var sourceProj = ol.proj.get(srs);
+        var targetProj = ol.proj.get(targetSrs);
 
-        return ol.proj.transformExtent(ext, ol.proj.get(srs), ol.proj.get(targetSrs));
+        if (srs === targetSrs) {
+            return ext;
+        }
+
+        if (!sourceProj || !targetProj) {
+            return ext;
+        }
+
+        return ol.proj.transformExtent(ext, sourceProj, targetProj);
     }
+    ////
 
-    OL_HELPERS.createArcgisFeatureLayer = function (url, descriptor, visible, map) {
+    //// MB_bugfix arcgis_rest
+    OL_HELPERS.createArcgisFeatureLayer = function (url, descriptor, visible, map, proxifyFn) {
+
+        //// MB_bugfix arcgis_rest
+        var MAX_PAGES = 5;
+        ////
+
+        proxifyFn = proxifyFn || function(u) { return u; };
 
         var format = new ol.format.EsriJSON();
 
         var defaultQueryParams = {
-            "dummy" : 1,
+            //// MB_bugfix arcgis_rest
+            // Use the standard ArcGIS query parameters for feature display.
+            // JSON is enough for ol.format.EsriJSON and works more reliably than pjson.
+            // Keep the page size aligned with MAX_FEATURES to avoid overloading CKAN.
+            "where" : "1=1",
             "geometryType" : "esriGeometryEnvelope",
             "inSR" : "4326",
             "spatialRel" : "esriSpatialRelIntersects",
@@ -2365,81 +2611,150 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             "returnZ" : false,
             "returnM" : false,
             "returnDistinctValues" : false,
-            "f" : "pjson"
-        }
+            //// MB_bugfix arcgis_rest
+            // Use stable ordering so ArcGIS pagination returns predictable pages.
+            "orderByFields" : "OBJECTID",
+            ////
+            "resultRecordCount" : MAX_FEATURES,
+            "f" : "json"
+            ////
+        };
+
+        var source;
+
+        //// MB_bugfix arcgis_rest
+        var loadArcgisPagesForExtent = function(extent, mapProjection) {
+            var outSrs = OL_HELPERS.EPSG4326;
+
+            var queryParams = _.extend(
+                {},
+                defaultQueryParams,
+                {
+                    "geometry" : extent.join(','),
+                    "inSR" : mapProjection.getCode().split(':').pop(),
+                    "outSR" : outSrs.getCode().split(':').pop()
+                }
+            );
+
+            var fetchPage = function(offset, collectedFeatures) {
+                var pagedQueryParams = _.extend(
+                    {},
+                    queryParams,
+                    {
+                        "resultOffset": offset,
+                        "resultRecordCount": MAX_FEATURES
+                    }
+                );
+
+                var requestUrl = proxifyFn(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(pagedQueryParams));
+                //// MB_debug_log
+                console.log('ArcGIS feature requestUrl:', requestUrl);
+                ////
+
+                return fetch(requestUrl, {method:'GET'})
+                    .then(function(response) {
+                        return response.text();
+                    })
+                    .then(function(text) {
+                        //// MB_bugfix arcgis_rest
+                        var data = JSON.parse(text);
+                        var exceededTransferLimit = !!data.exceededTransferLimit;
+                        //// MB_debug_log
+                        console.log('ArcGIS page offset=', offset, 'features.length=', (data.features && data.features.length) || 0, 'exceededTransferLimit=', exceededTransferLimit);
+                        ////
+                        var features = format.readFeatures(data, {
+                            featureProjection: mapProjection,
+                            dataProjection: outSrs
+                        });
+
+                        features.forEach(function(feature) {
+                            if (feature.getId() === undefined) {
+                                if (feature.get("OBJECTID")) {
+                                    feature.setId(feature.get("OBJECTID"));
+                                } else {
+                                    var hashkey = new ol.format.GeoJSON().writeFeature(feature).hashCode();
+                                    feature.setId(hashkey);
+                                }
+                            }
+                        });
+
+                        collectedFeatures = collectedFeatures.concat(features);
+
+                        // Continue paging when ArcGIS says more data exists, up to MAX_PAGES.
+                        if (exceededTransferLimit && (offset / MAX_FEATURES) < (MAX_PAGES - 1)) {
+                            return fetchPage(offset + MAX_FEATURES, collectedFeatures);
+                        } else {
+                            return collectedFeatures;
+                        }
+                        ////
+                    });
+            };
+
+            source.setState(ol.source.State.LOADING);
+
+            return fetchPage(0, [])
+                .then(function(allFeatures) {
+                    source.addFeatures(allFeatures);
+
+                    source.set('partial_load', false);
+                    source.setState(ol.source.State.READY);
+
+                    return false;
+                })
+                .catch(function(ex) {
+                    source.setState(ol.source.State.ERROR);
+                    console.warn("ArcGIS GetFeatures failed");
+                    console.warn(ex);
+                });
+        };
+        ////
+
+        source = new ol.source.Vector({
+            loader: function (extent, resolution, mapProjection) {
+                return loadArcgisPagesForExtent(extent, mapProjection);
+            },
+            strategy: ol.loadingstrategy.bbox
+        });
 
         var layer = new ol.layer.Vector({
             style: OL_HELPERS.DEFAULT_STYLEMAP.default,
             title: descriptor.name,
-            source: new ol.source.Vector({
-                loader: function (extent, resolution, mapProjection) {
-                    var outSrs = OL_HELPERS.EPSG4326;
-
-                    var queryParams = _.extend(
-                        {},
-                        defaultQueryParams,
-                        {
-                            "geometry" : extent.join(','),
-                            "inSR" : mapProjection.getCode().split(':').pop(),
-                            "outSR" : outSrs.getCode().split(':').pop()
-                        }
-                    )
-
-                    layer.getSource().setState(ol.source.State.LOADING)
-
-                    return fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams),
-                                 {method:'GET'}
-                                 // can't use credentials:include here with AGOL, because they send back
-                                 // Access-Control-Allow-Origin: *, and the combination doesn't work.
-                    ).then(
-                        function (response) {
-                            return response.text();
-                        }
-                    ).then(
-                        function (text) {
-
-                            var features = format.readFeatures(text, {featureProjection: mapProjection, dataProjection: outSrs});
-
-                            // generate fid from properties hash to avoid multiple insertion of same feature
-                            // (when max_features strategy is applied and features have no intrisic ID)
-                            features.forEach(function(feature) {
-                                if (feature.getId() === undefined) {
-                                    if (feature.get("OBJECTID"))
-                                        feature.setId(feature.get("OBJECTID"));
-                                    else {
-                                        var hashkey = new ol.format.GeoJSON().writeFeature(feature).hashCode();
-                                        feature.setId(hashkey);
-                                    }
-                                }
-                            })
-
-                            layer
-                                .getSource()
-                                .addFeatures(features);
-
-                            var moreToLoad = features.length >= MAX_FEATURES;
-                            layer.getSource().set('partial_load', moreToLoad);
-                            layer.getSource().setState(ol.source.State.READY);
-
-                            return moreToLoad
-                        }
-                    ).catch(function (ex) {
-                            layer.getSource().setState(ol.source.State.ERROR);
-                            console.warn("ArcGIS GetFeatures failed");
-                            console.warn(ex);
-                        })
-                },
-                strategy: ol.loadingstrategy.bbox
-            }),
+            source: source,
             visible : visible
         });
 
+        //// MB_bugfix arcgis_rest
+        source.set('mb_arcgis_feature_reloadable', true);
+
+        source.mbForceReload = function() {
+            source.clear(true);
+            if (source.loadedExtentsRtree_) {
+                source.loadedExtentsRtree_.clear();
+            }
+
+            var mapProjection = map.getView().getProjection();
+            var extent = map.getView().calculateExtent(map.getSize());
+
+            return loadArcgisPagesForExtent(extent, mapProjection);
+        };
+        ////
+
+        //// MB_bugfix arcgis_rest
+        var originalRefresh = source.refresh ? source.refresh.bind(source) : null;
+        source.refresh = function() {
+            source.clear(true);
+            if (source.loadedExtentsRtree_) {
+                source.loadedExtentsRtree_.clear();
+            }
+            if (originalRefresh) {
+                return originalRefresh();
+            }
+            source.changed();
+        };
+        ////
 
         layer.getSource().getFeatureById = function(id) {
-
-
             var outSrs = OL_HELPERS.EPSG4326;
-
             var queryParams = _.extend(
                 {},
                 defaultQueryParams,
@@ -2448,13 +2763,16 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     "inSR" : map.getView().getProjection().getCode().split(':').pop(),
                     "outSR" : outSrs.getCode().split(':').pop()
                 }
-            )
+            );
 
+            var requestUrl = proxifyFn(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams));
+            //// MB_debug_log
+            console.log('ArcGIS feature by id requestUrl:', requestUrl);
+            ////
             var promise = $.Deferred();
 
-
-            fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + kvp2string(queryParams),
-                {method:'GET', credentials: 'include'}
+            fetch(requestUrl,
+                 {method:'GET'}
             ).then(
                 function (response) {
                     return response.text();
@@ -2474,7 +2792,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                             var hashkey = new ol.format.GeoJSON().writeFeature(feature).hashCode();
                             feature.setId(hashkey);
                         }
-                    })
+                    });
 
                     promise.resolve(features.length>0 && features[0]);
                 }
@@ -2482,10 +2800,10 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     console.warn("GetFeatureById failed on "+layer.getSource().get('name')+" / "+id+" : "+ex);
                     console.warn(ex);
                     promise.reject(ex);
-                })
+                });
 
             return promise;
-        }
+        };
 
 
         if (!descriptor.bounds && descriptor.extent) {
@@ -2499,6 +2817,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
 
         return layer;
     }
+    ////
 
     OL_HELPERS.createGeoPackageTileLayer = function (geoPackage, tableInfo, tileDao, visible, map) {
         // get tileMatrixSet
@@ -2835,6 +3154,9 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         'gpkg': 'application/vnd.opengeospatial.geopackage+sqlite3',
         'wmts': 'service/wmts',
         'arcgis_rest': 'application/vnd.esri.arcgis.rest',
+        //// MB_feature arcgis_rest_img
+        'arcgis_rest_img': 'application/vnd.esri.arcgis.rest.image',
+        ////
         'geojson' : 'application/geo+json',
         'json' : 'application/json'
     };
@@ -2907,6 +3229,10 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             return OL_HELPERS.withFeatureTypesLayers(proxyUri, layerAdder, resourceNames /*FTname*/, map, true /* useGET */);
         } else if (matchExtension("arcgis_rest")) {
             return OL_HELPERS.withArcGisLayers(url, layerAdder, resourceNames /*layername*/, proxifyFn , map);
+        //// MB_feature arcgis_rest_img
+        } else if (matchExtension("arcgis_rest_img")) {
+            return OL_HELPERS.withArcGisImageLayers(url, layerAdder, resourceNames /*layername*/, map);
+        ////
         } else if (matchExtension("wfs3")) {
             return OL_HELPERS.withWFS3Types(proxyUri, layerAdder, resourceNames /*FTname*/, map, proxifyFn);
         } else if (matchExtension("gpkg")) {

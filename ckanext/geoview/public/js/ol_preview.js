@@ -15,14 +15,35 @@
 
         ckan.geoview = ckan.geoview || {}
 
+        //// MB_bugfix arcgis_rest
         var esrirestExtractor = function(resource, proxyUrl, proxyServiceUrl, layerProcessor, map) {
             var parsedUrl = resource.url.split('#');
-            var url = proxyServiceUrl || parsedUrl[0];
-
+            var originalUrl = parsedUrl[0];
             var layerName = parsedUrl.length > 1 && parsedUrl[1];
 
-            OL_HELPERS.withArcGisLayers(url, layerProcessor, layerName, parsedUrl[0]);
-        }
+            //// MB_bugfix arcgis_rest
+            // Use direct ArcGIS query URLs for feature loading. The generic CKAN proxy
+            // returns HTML for ArcGIS query/export style subrequests in this setup.
+            // Keep proxyServiceUrl only for the service descriptor request inside
+            // withArcGisLayers().
+            var proxifyFn = function(targetUrl) {
+                return targetUrl;
+            };
+            ////
+
+            OL_HELPERS.withArcGisLayers(originalUrl, layerProcessor, layerName, proxifyFn, map, proxyServiceUrl);
+        };
+        ////
+
+        //// MB_feature arcgis_rest_img
+        var esrirestImageExtractor = function(resource, proxyUrl, proxyServiceUrl, layerProcessor, map) {
+            var parsedUrl = resource.url.split('#');
+            var originalUrl = parsedUrl[0];
+            var layerName = parsedUrl.length > 1 && parsedUrl[1];
+
+            OL_HELPERS.withArcGisImageLayers(originalUrl, layerProcessor, layerName, map, proxyServiceUrl);
+        };
+        ////
 
         ckan.geoview.layerExtractors = {
 
@@ -69,6 +90,10 @@
             },
             'arcgis_rest': esrirestExtractor ,
             'esri rest': esrirestExtractor ,
+            //// MB_feature arcgis_rest_img
+            'arcgis_rest_img': esrirestImageExtractor ,
+            'arcgis rest img': esrirestImageExtractor ,
+            ////
             'gft': function (resource, proxyUrl, proxyServiceUrl, layerProcessor, map) {
                 var tableId = OL_HELPERS.parseURL(resource.url).query.docid;
                 layerProcessor(OL_HELPERS.createGFTLayer(tableId, ckan.geoview.gapi_key));
