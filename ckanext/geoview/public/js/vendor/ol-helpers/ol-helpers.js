@@ -1241,9 +1241,24 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 wgs84bbox: bbox
             }
         })
+        var serviceKeywords = $($capas[0].getElementsByTagNameNS('*', 'Keyword')).map(function(_, el) {
+            return $(el).text();
+        }).get();
+
+        var onlineResource = $($capas[0].getElementsByTagNameNS('*', 'OnlineResource')).attr('xlink:href') ||
+                             $($capas[0].getElementsByTagNameNS('*', 'OnlineResource')).attr('href');
+
+        var schemaLocation = ($capas[0].documentElement && $($capas[0].documentElement).attr('xsi:schemaLocation')) || '';
+
+        var isArcgisWfs = serviceKeywords.indexOf('ESRI()') >= 0 ||
+                          (onlineResource && /arcgis/i.test(onlineResource) && /WFSServer/i.test(onlineResource)) ||
+                          (/arcgis/i.test(schemaLocation) && /WFSServer/i.test(schemaLocation));
+
         return {
             version: ver,
-            featureTypes: featureTypes
+            featureTypes: featureTypes,
+            isArcgisWfs: isArcgisWfs,
+            onlineResource: onlineResource
         }
     }
 
@@ -1307,8 +1322,10 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 if (ver == "2.0.0")
                     ver = "1.1.0"  // 2.0.0 causes failures in some cases (e.g. Geoserver TOPP States WFS)
 
-                // force GML version to 2.0; GML3 introduces variations in axis order depending on implementations
-                var gmlFormatVersion = "GML2";
+                var isArcgisWfs = !!capas.isArcgisWfs;
+
+                // force GML version to 2.0 by default; ArcGIS WFS returns GML 3-style geometries.
+                var gmlFormatVersion = isArcgisWfs ? "GML3" : "GML2";
 
                 var candidates = capas.featureTypes
                 if (ftNames) candidates = capas.featureTypes.filter(function (ft) {
@@ -1438,7 +1455,10 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                                                         if (ver != '1.0.0') {
                                                             // let's set the bbox srs explicitly to avoid default behaviours among server impls
 
-                                                            if (ol.proj.equivalent(mapProjection, OL_HELPERS.EPSG4326)
+                                                            if (isArcgisWfs) {
+                                                                var transformedExtent = ol.proj.transformExtent(extent, mapProjection, resolvedSrs);
+                                                                bbox = transformedExtent.join(',') + ',' + resolvedSrs.getCode();
+                                                            } else if (ol.proj.equivalent(mapProjection, OL_HELPERS.EPSG4326)
                                                             // apparently 4326 extents from map.view are always in lon/lat already
                                                             //&& mapProjection.getAxisOrientation() == 'enu'
                                                                 ) {
@@ -1466,9 +1486,12 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                                                             /* TODO check if map proj is compatible with WFS
                                                              some versions/impls need always 4326 bbox
                                                              do on-the-fly reprojection if needed */
-                                                            bbox: bbox,
+                                                            bbox: bbox
+                                                        }
+
+                                                        if (!isArcgisWfs) {
                                                             // some WFS have wrong axis order if GML3
-                                                            outputFormat: gmlFormatVersion
+                                                            params.outputFormat = gmlFormatVersion;
                                                         }
 
                                                         ftLayer.getSource().setState(ol.source.State.LOADING)
@@ -1531,6 +1554,14 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                                                     projection: resolvedSrs // is this needed ?
                                                     //maxExtent:
                                                 })
+
+                                                ftSource.mbForceReload = function() {
+                                                    ftSource.clear(true);
+                                                    if (ftSource.loadedExtentsRtree_) {
+                                                        ftSource.loadedExtentsRtree_.clear();
+                                                    }
+                                                    ftSource.changed();
+                                                };
 
                                                 ftSource.getFeatureById = function(id) {
                                                     var promise = $.Deferred();
@@ -1788,6 +1819,14 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                                 },
                                 strategy: ol.loadingstrategy.bbox
                             })
+
+                            ftSource.mbForceReload = function() {
+                                ftSource.clear(true);
+                                if (ftSource.loadedExtentsRtree_) {
+                                    ftSource.loadedExtentsRtree_.clear();
+                                }
+                                ftSource.changed();
+                            };
 
                             ftSource.getFeatureById = function (id) {
                                 // try both the 'Features' and 'Feature' tags. Not sure which one is correct, check the spec.
