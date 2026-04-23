@@ -6,7 +6,7 @@ ckan.module('wmtspreview', function (jQuery, _) {
 
       self.el.empty();
       self.el.append($('<div></div>').attr('id', 'map'));
-      self.map = ckan.commonLeafletMap('map', this.options.map_config, {attributionControl: false, center: [0, 0], zoom: 3});
+      self.map = null;
 
       $.ajaxSetup({
         beforeSend: function (xhr) {
@@ -45,6 +45,167 @@ ckan.module('wmtspreview', function (jQuery, _) {
       var maps = {};
       var mapLatLngBounds = {};
       var overlay;
+      var matrixSets = {};
+
+      function normalizeCrs(crsText) {
+        if (!crsText) return '';
+        var match = crsText.match(/EPSG(?:::|:)(\d+)/i);
+        if (match) return 'EPSG:' + match[1];
+        return crsText;
+      }
+
+      function normalizeMatrixSetName(name) {
+        if (!name) return '';
+        return String(name).toLowerCase().replace(/[_-]?\d+(?:-\d+)?$/, '');
+      }
+
+      function parseBoolOption(value, defaultValue) {
+        if (value === undefined || value === null || value === '') return defaultValue;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'string') return value.toLowerCase() === 'true';
+        return !!value;
+      }
+
+      function parseKeywordOption(value) {
+        if (value === undefined || value === null || value === true) {
+          value = '';
+        }
+        if (Array.isArray(value)) return value;
+        return String(value).split(',').map(function(item) {
+          return item.trim().toLowerCase();
+        }).filter(function(item) { return item.length > 0; });
+      }
+
+      var wmtsConfig = (this.options && this.options.map_config) ? this.options.map_config : {};
+      var wmtsMatrixsetAutoSelect = parseBoolOption(wmtsConfig.wmts_matrixset_auto_select, false);
+      var wmtsMatrixsetPreferredKeywords = parseKeywordOption(wmtsConfig.wmts_matrixset_preferred_keywords);
+      var wmtsMatrixsetHideBasemapIfIncompatible = parseBoolOption(wmtsConfig.wmts_matrixset_hide_basemap_if_incompatible, false);
+      var wmtsMatrixsetRequireXyzGrid = parseBoolOption(wmtsConfig.wmts_matrixset_require_xyz_grid, false);
+
+      //console.log('WMTS CFG DEBUG this.options=', this.options);
+      //console.log('WMTS CFG DEBUG wmtsConfig=', wmtsConfig);
+      //console.log('WMTS CFG DEBUG raw auto_select=', wmtsConfig.wmts_matrixset_auto_select);
+      //console.log('WMTS CFG DEBUG raw preferred_keywords=', wmtsConfig.wmts_matrixset_preferred_keywords);
+      //console.log('WMTS CFG DEBUG raw hide_basemap_if_incompatible=', wmtsConfig.wmts_matrixset_hide_basemap_if_incompatible);
+      //console.log('WMTS CFG DEBUG raw require_xyz_grid=', wmtsConfig.wmts_matrixset_require_xyz_grid);
+      //console.log('WMTS CFG DEBUG parsed auto_select=', wmtsMatrixsetAutoSelect);
+      //console.log('WMTS CFG DEBUG parsed preferred_keywords=', wmtsMatrixsetPreferredKeywords);
+      //console.log('WMTS CFG DEBUG parsed hide_basemap_if_incompatible=', wmtsMatrixsetHideBasemapIfIncompatible);
+      //console.log('WMTS CFG DEBUG parsed require_xyz_grid=', wmtsMatrixsetRequireXyzGrid);
+
+      function getMatrixInfo(matrixSetId) {
+        if (!matrixSetId) return null;
+        if (matrixSets[matrixSetId]) return matrixSets[matrixSetId];
+
+        var normalized = normalizeMatrixSetName(matrixSetId);
+        var fallback = null;
+
+        jQuery.each(matrixSets, function(id, info) {
+          if (normalizeMatrixSetName(id) === normalized) {
+            fallback = info;
+            return false;
+          }
+        });
+
+        return fallback;
+      }
+
+      function isStandardWebMercatorGrid(matrixInfo) {
+        if (!matrixInfo) return false;
+        var crs = normalizeCrs(matrixInfo.supportedCrs);
+        var first = matrixInfo.firstTileMatrix || {};
+        var tlc = first.topLeftCorner || [];
+        var width = first.matrixWidth;
+        var height = first.matrixHeight;
+
+        if (!(crs === 'EPSG:3857' || crs === 'EPSG:900913' || crs === 'EPSG:102100' || crs === 'EPSG:102113')) {
+          return false;
+        }
+        if (!(width === 1 && height === 1)) {
+          return false;
+        }
+        if (tlc.length !== 2) {
+          return false;
+        }
+
+        return Math.abs(tlc[0] + 20037508.342789244) < 1 &&
+               Math.abs(tlc[1] - 20037508.342789244) < 1;
+      }
+
+      function matrixSetCompatibilityScore(matrixSetId) {
+        var matrixInfo = getMatrixInfo(matrixSetId);
+        if (!matrixInfo) return 0;
+
+        var id = (matrixInfo.id || '').toLowerCase();
+        var title = (matrixInfo.title || '').toLowerCase();
+        var wellKnownScaleSet = (matrixInfo.wellKnownScaleSet || '').toLowerCase();
+
+        if (!wmtsMatrixsetAutoSelect) {
+          return 0;
+        }
+
+        //if (wellKnownScaleSet.indexOf('googlemapscompatible') >= 0) {
+        //  return 1000;
+        //}
+
+        for (var i = 0; i < wmtsMatrixsetPreferredKeywords.length; i++) {
+          var kw = wmtsMatrixsetPreferredKeywords[i];
+          if (id.indexOf(kw) >= 0 || title.indexOf(kw) >= 0 || wellKnownScaleSet.indexOf(kw) >= 0) {
+            return 900 - i;
+          }
+        }
+
+        if (wmtsMatrixsetRequireXyzGrid && isStandardWebMercatorGrid(matrixInfo)) {
+          return 100;
+        }
+
+        //if (!wmtsMatrixsetRequireXyzGrid && isStandardWebMercatorGrid(matrixInfo)) {
+        //  return 100;
+        //}
+
+        return 0;
+      }
+
+      function chooseMatrixSet(linkedMatrixSets) {
+        console.log('WMTS CFG DEBUG linkedMatrixSets=', linkedMatrixSets);
+        if (!wmtsMatrixsetAutoSelect) {
+          console.log('WMTS CFG DEBUG auto-select disabled, keeping first matrix set=', linkedMatrixSets.length ? linkedMatrixSets[0] : '');
+          return linkedMatrixSets.length ? linkedMatrixSets[0] : '';
+        }
+
+        var bestId = linkedMatrixSets.length ? linkedMatrixSets[0] : '';
+        var bestScore = -1;
+
+        jQuery.each(linkedMatrixSets, function(i, matrixSetId) {
+          var score = matrixSetCompatibilityScore(matrixSetId);
+          console.log('WMTS CFG DEBUG matrixSet score=', matrixSetId, score, getMatrixInfo(matrixSetId));
+          if (score > bestScore) {
+            bestScore = score;
+            bestId = matrixSetId;
+          }
+        });
+
+        console.log('WMTS CFG DEBUG chosen matrix set=', bestId, 'score=', bestScore);
+        return bestId;
+      }
+
+      function chosenMatrixSetSupportsBasemap(matrixSetId) {
+        if (!wmtsMatrixsetAutoSelect) return true;
+        return matrixSetCompatibilityScore(matrixSetId) > 0;
+      }
+
+      function createMap(useBasemap) {
+        if (self.map && self.map.remove) {
+          self.map.remove();
+        }
+        $('#map').empty();
+
+        if (useBasemap) {
+          self.map = ckan.commonLeafletMap('map', self.options.map_config, {attributionControl: false, center: [0, 0], zoom: 3});
+        } else {
+          self.map = new L.Map('map', {attributionControl: false, center: [0, 0], zoom: 3});
+        }
+      }
 
       // Ensure that URLs have http://.
       function httpify(s) {
@@ -85,12 +246,48 @@ ckan.module('wmtspreview', function (jQuery, _) {
         bboxName = '';
       }
 
+      // Collect available TileMatrixSet metadata.
+      $(wmtsInfo).find('TileMatrixSet').filter(function() {
+        return $(this).children(nameSpace + 'SupportedCRS').length > 0;
+      }).each(function(i, selectedElement) {
+        var matrixSetId = $(selectedElement).find(nameSpace + 'Identifier').first().text();
+        var matrixSetTitle = $(selectedElement).find(nameSpace + 'Title').first().text();
+        var supportedCrs = $(selectedElement).find(nameSpace + 'SupportedCRS').first().text();
+        var wellKnownScaleSet = $(selectedElement).find('WellKnownScaleSet').first().text();
+        var firstTileMatrix = null;
+
+        $(selectedElement).find('TileMatrix').each(function(j, tm) {
+          if (firstTileMatrix) return;
+          var tlcText = $(tm).find('TopLeftCorner').first().text();
+          firstTileMatrix = {
+            matrixWidth: parseInt($(tm).find('MatrixWidth').first().text(), 10),
+            matrixHeight: parseInt($(tm).find('MatrixHeight').first().text(), 10),
+            topLeftCorner: tlcText ? tlcText.split(' ').map(parseFloat) : []
+          };
+        });
+
+        matrixSets[matrixSetId] = {
+          id: matrixSetId,
+          title: matrixSetTitle,
+          supportedCrs: supportedCrs,
+          wellKnownScaleSet: wellKnownScaleSet,
+          firstTileMatrix: firstTileMatrix
+        };
+        //console.log('WMTS CFG DEBUG matrixSet meta=', matrixSetId, matrixSets[matrixSetId]);
+      });
+
       // Collect information for each map.
       $(wmtsInfo).find(xmlPathPrefix).each(function(i, selectedElement) {
+        var linkedMatrixSets = [];
+        $(selectedElement).find('TileMatrixSetLink').find('TileMatrixSet').each(function(j, tm) {
+          linkedMatrixSets.push($(tm).text());
+        });
+
         mapInfos.push({
           'id': $(selectedElement).find(nameSpace + 'Identifier').first().text(),
           'title': $(selectedElement).find(nameSpace + 'Title').first().text(),
-          'tileMatrixSet': $(selectedElement).find('TileMatrixSet').first().text(),
+          'tileMatrixSet': chooseMatrixSet(linkedMatrixSets),
+          'linkedMatrixSets': linkedMatrixSets,
           'style': $(selectedElement).find('Style').find(nameSpace + 'Identifier').first().text(),
           'format': $(selectedElement).find('Format').text(),
           'resourceUrl': httpify($(selectedElement).find('ResourceURL').attr('template')),
@@ -98,6 +295,15 @@ ckan.module('wmtspreview', function (jQuery, _) {
           'upperCorner': $(selectedElement).find(nameSpace + bboxName).find(nameSpace + 'UpperCorner').text().split(' ').reverse(),
         });
       });
+
+      // Create map with basemap depending on matrix set compatibility and configuration.
+      var useBasemap = true;
+      console.log('WMTS CFG DEBUG first chosen tileMatrixSet=', mapInfos[0].tileMatrixSet);
+      if (wmtsMatrixsetAutoSelect && wmtsMatrixsetHideBasemapIfIncompatible) {
+        useBasemap = chosenMatrixSetSupportsBasemap(mapInfos[0].tileMatrixSet);
+      }
+      console.log('WMTS CFG DEBUG createMap useBasemap=', useBasemap);
+      createMap(useBasemap);
 
       // Get tiles via RESTful if the service has resourceUrls, otherwise get them via KVP.
       jQuery.each(mapInfos, function(i, mapInfo) {

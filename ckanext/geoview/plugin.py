@@ -218,6 +218,8 @@ class GeoJSONView(GeoViewBase):
                 data_dict
             )
 
+
+
     # ITemplateHelpers
 
     def get_helpers(self):
@@ -269,8 +271,29 @@ class WMTSView(GeoViewBase):
     # ITemplateHelpers
 
     def get_helpers(self):
+        def get_common_map_config_wmts():
+            map_config = utils.get_common_map_config()
+            map_config["wmts_matrixset_auto_select"] = toolkit.asbool(
+                toolkit.config.get("ckanext.geoview.wmts_matrixset_auto_select", False)
+            )
+            map_config["wmts_matrixset_preferred_keywords"] = toolkit.config.get(
+                "ckanext.geoview.wmts_matrixset_preferred_keywords", ""
+            )
+            map_config["wmts_matrixset_hide_basemap_if_incompatible"] = toolkit.asbool(
+                toolkit.config.get(
+                    "ckanext.geoview.wmts_matrixset_hide_basemap_if_incompatible",
+                    False,
+                )
+            )
+            map_config["wmts_matrixset_require_xyz_grid"] = toolkit.asbool(
+                toolkit.config.get(
+                    "ckanext.geoview.wmts_matrixset_require_xyz_grid", False
+                )
+            )
+            return map_config
+
         return {
-            "get_common_map_config_wmts": utils.get_common_map_config,
+            "get_common_map_config_wmts": get_common_map_config_wmts,
         }
 
 
