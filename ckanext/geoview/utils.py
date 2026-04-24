@@ -5,6 +5,7 @@ import logging
 from six.moves.urllib.parse import urlencode, urlsplit, parse_qs
 
 import requests
+import re
 
 from ckan import plugins as p
 from ckan.plugins import toolkit
