@@ -1,0 +1,17 @@
+{% extends "dataviewer/base.html" %}
+
+{% block page %}
+    {%- block styles %}
+        {% asset 'ckanext-geoview/wmts_kvp_js' %}
+        {% asset 'ckanext-geoview/wmts_kvp_css' %}
+    {% endblock %}
+
+    {% set map_config = h.get_common_map_config_wmts_kvp() %}
+    <div data-module="wmtskvppreview" id="data-preview" data-module-site_url="{{ h.dump_json(h.url_for('/', locale='default', qualified=true)) }}" data-module-map_config="{{ h.dump_json(map_config) }}" data-module-proxy_url="{{ h.dump_json(proxy_url|default(none, true)) }}" data-module-proxy_service_url="{{ h.dump_json(proxy_service_url|default(none, true)) }}">
+        <h4 class="loading-dialog">
+          <div class="loading-spinner"></div>
+          <div class="left">{{ _('Loading...') }}</div>
+        </h4>
+    </div>
+
+{% endblock %}

@@ -32,6 +32,31 @@ OGC_EXCLUDED_PARAMS = [
 ]
 
 
+def normalize_service_url(resource):
+    """Return a service endpoint URL suitable for proxied OGC requests.
+
+    For wmts_kvp resources, the stored resource URL may point to a capabilities
+    document like:
+      .../WMTS/1.0.0/WMTSCapabilities.xml
+    but KVP GetTile/GetCapabilities requests must target the WMTS service
+    endpoint:
+      .../WMTS
+    """
+
+    url = resource["url"]
+    format_lower = resource.get("format", "").lower()
+    parts = urlsplit(url)
+
+    if format_lower == "wmts_kvp":
+        path = parts.path or ""
+        path = re.sub(r"/1\.0\.0/WMTSCapabilities\.xml$", "", path)
+        path = re.sub(r"/WMTSCapabilities\.xml$", "", path)
+        parts = parts._replace(path=path)
+        url = parts.geturl()
+
+    return url
+
+
 def proxy_service_resource(request, context, data_dict):
     """ Chunked proxy for resources. To make sure that the file is not too
     large, first, we try to get the content length from the headers.
@@ -41,7 +66,7 @@ def proxy_service_resource(request, context, data_dict):
     resource_id = data_dict["resource_id"]
     log.info("Proxify resource {id}".format(id=resource_id))
     resource = toolkit.get_action("resource_show")(context, {"id": resource_id})
-    url = resource["url"]
+    url = normalize_service_url(resource)
     return proxy_service_url(request, url)
 
 

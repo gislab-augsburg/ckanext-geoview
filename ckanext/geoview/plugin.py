@@ -297,6 +297,84 @@ class WMTSView(GeoViewBase):
         }
 
 
+class WMTSKVPView(GeoViewBase):
+    p.implements(p.ITemplateHelpers, inherit=True)
+
+    WMTS_KVP = ["wmts_kvp"]
+
+    def info(self):
+        return {
+            "name": "wmts_kvp_view",
+            "title": "wmts_kvp",
+            "icon": "map-marker",
+            "iframed": True,
+            "default_title": toolkit._("WMTS KVP"),
+        }
+
+    def can_view(self, data_dict):
+        resource = data_dict["resource"]
+        format_lower = resource.get("format", "").lower()
+        same_domain = on_same_domain(data_dict)
+
+        if format_lower in self.WMTS_KVP:
+            return same_domain or self.proxy_enabled
+        return False
+
+    def view_template(self, context, data_dict):
+        return "dataviewer/wmts_kvp.html"
+
+    def setup_template_variables(self, context, data_dict):
+        import ckanext.resourceproxy.plugin as proxy
+
+        same_domain = on_same_domain(data_dict)
+
+        if self.proxy_enabled and not same_domain:
+            proxy_url = proxy.get_proxified_resource_url(data_dict)
+            proxy_service_url = utils.get_proxified_service_url(data_dict)
+        else:
+            proxy_url = data_dict["resource"]["url"]
+            proxy_service_url = utils.normalize_service_url(data_dict["resource"])
+
+        # Expose proxy URLs reliably to the template/module context.
+        data_dict["proxy_url"] = proxy_url
+        data_dict["proxy_service_url"] = proxy_service_url
+
+        # Make preload_resource.url a proxied KVP GetCapabilities URL so the
+        # browser-side preview has a robust fallback path.
+        data_dict["resource"]["original_url"] = data_dict["resource"].get("url")
+        data_dict["resource"]["url"] = (
+            proxy_service_url
+            + ("&" if "?" in proxy_service_url else "?")
+            + "SERVICE=WMTS&REQUEST=GetCapabilities&VERSION=1.0.0"
+        )
+
+    def get_helpers(self):
+        def get_common_map_config_wmts_kvp():
+            map_config = utils.get_common_map_config()
+            map_config["wmts_matrixset_auto_select"] = toolkit.asbool(
+                toolkit.config.get("ckanext.geoview.wmts_matrixset_auto_select", False)
+            )
+            map_config["wmts_matrixset_preferred_keywords"] = toolkit.config.get(
+                "ckanext.geoview.wmts_matrixset_preferred_keywords", ""
+            )
+            map_config["wmts_matrixset_hide_basemap_if_incompatible"] = toolkit.asbool(
+                toolkit.config.get(
+                    "ckanext.geoview.wmts_matrixset_hide_basemap_if_incompatible",
+                    False,
+                )
+            )
+            map_config["wmts_matrixset_require_xyz_grid"] = toolkit.asbool(
+                toolkit.config.get(
+                    "ckanext.geoview.wmts_matrixset_require_xyz_grid", False
+                )
+            )
+            return map_config
+
+        return {
+            "get_common_map_config_wmts_kvp": get_common_map_config_wmts_kvp,
+        }
+
+
 class SHPView(GeoViewBase):
     p.implements(p.ITemplateHelpers, inherit=True)
 
