@@ -1,4 +1,5 @@
 // wmts preview module
+// new
 ckan.module('wmtspreview', function (jQuery, _) {
   return {
     initialize: function () {
@@ -41,6 +42,7 @@ ckan.module('wmtspreview', function (jQuery, _) {
       var tileUrlPrefix = $(wmtsInfo).find(nameSpace + 'Operation[name="GetTile"]').find(nameSpace + 'Get:contains("KVP")').attr('xlink:href');
       var bboxName;
       var mapInfos = [];
+      var requestedLayerId = getRequestedLayerId();
       var tileVariables = {TileMatrixSet: '{tileMatrixSet}', TileMatrix: '{z}', Style: '{style}', TileRow: '{y}', TileCol: '{x}'};
       var maps = {};
       var mapLatLngBounds = {};
@@ -215,6 +217,36 @@ ckan.module('wmtspreview', function (jQuery, _) {
 	return s;
       }
 
+function getRequestedLayerId() {
+        var sourceUrl = null;
+        if (preload_resource && preload_resource.original_url) {
+          sourceUrl = preload_resource.original_url;
+        } else if (preload_resource && preload_resource.url) {
+          sourceUrl = preload_resource.url;
+        }
+
+        console.log('WMTS LAYER DEBUG sourceUrl=', sourceUrl);
+
+        if (!sourceUrl) {
+          console.log('WMTS LAYER DEBUG requestedLayerId=', null);
+          return null;
+        }
+
+        var hashIndex = String(sourceUrl).indexOf('#');
+        if (hashIndex < 0) {
+          console.log('WMTS LAYER DEBUG requestedLayerId=', null);
+          return null;
+        }
+
+        var fragment = String(sourceUrl).substring(hashIndex + 1);
+        fragment = decodeURIComponent(fragment || '').trim();
+
+        console.log('WMTS LAYER DEBUG requestedLayerId=', fragment);
+
+        return fragment || null;
+      }
+
+
       // Get the layer when changing to a new layer.
       function layerChange(e) {
 	overlay = e.layer;
@@ -283,8 +315,20 @@ ckan.module('wmtspreview', function (jQuery, _) {
           linkedMatrixSets.push($(tm).text());
         });
 
+        var layerId = $(selectedElement).find(nameSpace + 'Identifier').first().text();
+        console.log('WMTS LAYER DEBUG foundLayerId=', layerId);
+        console.log('WMTS LAYER DEBUG compare=', {
+          requestedLayerId: requestedLayerId,
+          layerId: layerId,
+          matches: !requestedLayerId || layerId === requestedLayerId
+        });
+
+        if (requestedLayerId && layerId !== requestedLayerId) {
+          return;
+        }
+
         mapInfos.push({
-          'id': $(selectedElement).find(nameSpace + 'Identifier').first().text(),
+          'id': layerId,
           'title': $(selectedElement).find(nameSpace + 'Title').first().text(),
           'tileMatrixSet': chooseMatrixSet(linkedMatrixSets),
           'linkedMatrixSets': linkedMatrixSets,
@@ -295,6 +339,13 @@ ckan.module('wmtspreview', function (jQuery, _) {
           'upperCorner': $(selectedElement).find(nameSpace + bboxName).find(nameSpace + 'UpperCorner').text().split(' ').reverse(),
         });
       });
+
+      console.log('WMTS LAYER DEBUG final mapInfos ids=', mapInfos.map(function(x) { return x.id; }));
+
+      if (requestedLayerId && !mapInfos.length) {
+        self.showError({responseText: 'Requested WMTS layer not found: ' + requestedLayerId}, 'error', 'Layer not found');
+        return;
+      }
 
       // Create map with basemap depending on matrix set compatibility and configuration.
       var useBasemap = true;

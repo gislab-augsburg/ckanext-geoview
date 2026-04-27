@@ -87,6 +87,7 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
       var tileUrlPrefix = $(wmtsInfo).find(nameSpace + 'Operation[name="GetTile"]').find(nameSpace + 'Get:contains("KVP")').attr('xlink:href');
       var bboxName;
       var mapInfos = [];
+      var requestedLayerId = getRequestedLayerId();
       var maps = {};
       var mapLatLngBounds = {};
       var overlay;
@@ -98,6 +99,35 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
         }
         return s;
       }
+      function getRequestedLayerId() {
+        var sourceUrl = null;
+        if (preload_resource && preload_resource.original_url) {
+          sourceUrl = preload_resource.original_url;
+        } else if (preload_resource && preload_resource.url) {
+          sourceUrl = preload_resource.url;
+        }
+
+        console.log('WMTS LAYER DEBUG sourceUrl=', sourceUrl);
+
+        if (!sourceUrl) {
+          console.log('WMTS LAYER DEBUG requestedLayerId=', null);
+          return null;
+        }
+
+        var hashIndex = String(sourceUrl).indexOf('#');
+        if (hashIndex < 0) {
+          console.log('WMTS LAYER DEBUG requestedLayerId=', null);
+          return null;
+        }
+
+        var fragment = String(sourceUrl).substring(hashIndex + 1);
+        fragment = decodeURIComponent(fragment || '').trim();
+
+        console.log('WMTS LAYER DEBUG requestedLayerId=', fragment);
+
+        return fragment || null;
+      }
+
 
       function layerChange(e) {
         overlay = e.layer;
@@ -250,7 +280,9 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
       }
 
       function chooseMatrixSet(linkedMatrixSets) {
+        console.log('WMTS CFG DEBUG linkedMatrixSets=', linkedMatrixSets);
         if (!wmtsMatrixsetAutoSelect) {
+          console.log('WMTS CFG DEBUG auto-select disabled, keeping first matrix set=', linkedMatrixSets.length ? linkedMatrixSets[0] : '');
           return linkedMatrixSets.length ? linkedMatrixSets[0] : '';
         }
 
@@ -259,12 +291,14 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
 
         jQuery.each(linkedMatrixSets, function(i, matrixSetId) {
           var score = matrixSetCompatibilityScore(matrixSetId);
+          console.log('WMTS CFG DEBUG matrixSet score=', matrixSetId, score, getMatrixInfo(matrixSetId));
           if (score > bestScore) {
             bestScore = score;
             bestId = matrixSetId;
           }
         });
-
+        
+        console.log('WMTS CFG DEBUG chosen matrix set=', bestId, 'score=', bestScore);
         return bestId;
       }
 
@@ -453,8 +487,20 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
           linkedMatrixSets.push($(tm).text());
         });
 
+        var layerId = $(selectedElement).find(nameSpace + 'Identifier').first().text();
+        console.log('WMTS LAYER DEBUG foundLayerId=', layerId);
+        console.log('WMTS LAYER DEBUG compare=', {
+          requestedLayerId: requestedLayerId,
+          layerId: layerId,
+          matches: !requestedLayerId || layerId === requestedLayerId
+        });
+
+        if (requestedLayerId && layerId !== requestedLayerId) {
+          return;
+        }
+
         mapInfos.push({
-          'id': $(selectedElement).find(nameSpace + 'Identifier').first().text(),
+          'id': layerId,
           'title': $(selectedElement).find(nameSpace + 'Title').first().text(),
           'tileMatrixSet': chooseMatrixSet(linkedMatrixSets),
           'linkedMatrixSets': linkedMatrixSets,
@@ -470,6 +516,13 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
           'upperCorner': $(selectedElement).find(nameSpace + bboxName).find(nameSpace + 'UpperCorner').text().split(' ').reverse()
         });
       });
+
+      console.log('WMTS LAYER DEBUG final mapInfos ids=', mapInfos.map(function(x) { return x.id; }));
+
+      if (requestedLayerId && !mapInfos.length) {
+        self.showError({responseText: 'Requested WMTS layer not found: ' + requestedLayerId}, 'error', 'Layer not found');
+        return;
+      }
 
       function continueBuild() {
         if (!mapInfos.length) return;
