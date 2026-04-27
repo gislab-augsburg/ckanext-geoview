@@ -45,13 +45,6 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
 
       self.serviceProxyUrl = serviceProxyUrlOption || null;
 
-      console.log('WMTS KVP DEBUG this.options=', this.options);
-      console.log('WMTS KVP DEBUG preload_resource.url=', preload_resource && preload_resource['url']);
-      console.log('WMTS KVP DEBUG proxyUrlOption=', proxyUrlOption);
-      console.log('WMTS KVP DEBUG serviceProxyUrlOption=', serviceProxyUrlOption);
-      console.log('WMTS KVP DEBUG effectiveProxyUrl=', effectiveProxyUrl);
-      console.log('WMTS KVP DEBUG self.serviceProxyUrl=', self.serviceProxyUrl);
-
       self.proxifyUrl = function (targetUrl) {
         if (!targetUrl) return targetUrl;
         if (/\/dataset\/.*\/resource\/.*\/proxy(?:\?|$)/.test(targetUrl)) return targetUrl;
@@ -63,8 +56,6 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
 
       var capabilitiesBaseUrl = self.serviceProxyUrl || (preload_resource && preload_resource['url'] ? String(preload_resource['url']).replace(/([?&].*)?$/, '') : '');
       var capabilitiesUrl = capabilitiesBaseUrl + (capabilitiesBaseUrl.indexOf('?') >= 0 ? '' : '?') + 'SERVICE=WMTS&REQUEST=GetCapabilities&VERSION=1.0.0';
-      console.log('WMTS KVP DEBUG capabilitiesBaseUrl=', capabilitiesBaseUrl);
-      console.log('WMTS KVP DEBUG capabilitiesUrl=', capabilitiesUrl);
 
       jQuery.ajax({
         url: capabilitiesUrl,
@@ -259,9 +250,7 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
       }
 
       function chooseMatrixSet(linkedMatrixSets) {
-        console.log('WMTS KVP DEBUG linkedMatrixSets=', linkedMatrixSets);
         if (!wmtsMatrixsetAutoSelect) {
-          console.log('WMTS KVP DEBUG auto-select disabled, keeping first matrix set=', linkedMatrixSets.length ? linkedMatrixSets[0] : '');
           return linkedMatrixSets.length ? linkedMatrixSets[0] : '';
         }
 
@@ -270,14 +259,12 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
 
         jQuery.each(linkedMatrixSets, function(i, matrixSetId) {
           var score = matrixSetCompatibilityScore(matrixSetId);
-          console.log('WMTS KVP DEBUG matrixSet score=', matrixSetId, score, getMatrixInfo(matrixSetId));
           if (score > bestScore) {
             bestScore = score;
             bestId = matrixSetId;
           }
         });
 
-        console.log('WMTS KVP DEBUG chosen matrix set=', bestId, 'score=', bestScore);
         return bestId;
       }
 
@@ -306,11 +293,9 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
         var crsCode = matrixInfo && normalizeCrs(matrixInfo.code);
         var isStandard3857 = crsCode === 'EPSG:3857' || crsCode === 'EPSG:900913' || crsCode === 'EPSG:102100' || crsCode === 'EPSG:102113';
         var useBasemap = true;
-        console.log('WMTS KVP DEBUG first chosen tileMatrixSet=', firstMapInfo.tileMatrixSet);
         if (wmtsMatrixsetAutoSelect && wmtsMatrixsetHideBasemapIfIncompatible) {
           useBasemap = chosenMatrixSetSupportsBasemap(firstMapInfo.tileMatrixSet);
         }
-        console.log('WMTS KVP DEBUG createMap useBasemap=', useBasemap);
 
         if (isStandard3857 || !matrixInfo) {
           if (useBasemap) {
@@ -447,7 +432,6 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
           projectedBounds: (minX !== null) ? [[minX, minY], [maxX, maxY]] : null,
           firstTileMatrix: firstTileMatrix
         };
-        console.log('WMTS KVP DEBUG matrixSet meta=', matrixSetId, matrixSets[matrixSetId]);
       });
 
       $(wmtsInfo).find(xmlPathPrefix).each(function(i, selectedElement) {
@@ -494,8 +478,6 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
                 tileMatrixSet: this.options.tileMatrixSet
               };
               var url = L.Util.template(this._url, L.extend(data, this.options));
-              console.log('WMTS KVP DEBUG tile data=', data);
-              console.log('WMTS KVP DEBUG tile finalUrl=', url);
               return url;
             }
           });
