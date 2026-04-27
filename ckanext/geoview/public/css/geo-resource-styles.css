@@ -66,6 +66,11 @@
 .badge[data-format=wmts] {
     background-color: #3333ff;
 }
+
+.badge[data-format=wmts_kvp] {
+    background-color: #3333ff;
+}
+
 .format-label[data-format=wmts],
 .format-label[data-format*=wmts] {
     background: url("../../img/gis-resources-sprite-icons.png") no-repeat 0 0;
