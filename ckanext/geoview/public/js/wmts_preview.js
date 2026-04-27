@@ -190,8 +190,8 @@ ckan.module('wmtspreview', function (jQuery, _) {
       }
 
       function chosenMatrixSetSupportsBasemap(matrixSetId) {
-        if (!wmtsMatrixsetAutoSelect) return true;
-        return matrixSetCompatibilityScore(matrixSetId) > 0;
+        var matrixInfo = getMatrixInfo(matrixSetId);
+        return isStandardWebMercatorGrid(matrixInfo);
       }
 
       function createMap(useBasemap) {

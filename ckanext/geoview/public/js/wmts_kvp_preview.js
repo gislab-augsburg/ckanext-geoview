@@ -269,8 +269,8 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
       }
 
       function chosenMatrixSetSupportsBasemap(matrixSetId) {
-        if (!wmtsMatrixsetAutoSelect) return true;
-        return matrixSetCompatibilityScore(matrixSetId) > 0;
+        var matrixInfo = getMatrixInfo(matrixSetId);
+        return isStandardWebMercatorGrid(matrixInfo);
       }
 
       function metersPerUnitFor(crsCode) {
@@ -288,12 +288,21 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
         };
       }
 
+      function addConfiguredBasemapIfPossible(map) {
+        var mapConfig = (self.options && self.options.map_config) ? self.options.map_config : {};
+        if (mapConfig['custom.url']) {
+          L.tileLayer(mapConfig['custom.url'], {
+            attribution: mapConfig['attribution'] || ''
+          }).addTo(map);
+        }
+      }
+
       function createMapForLayer(firstMapInfo, callback) {
         var matrixInfo = getMatrixInfo(firstMapInfo.tileMatrixSet);
         var crsCode = matrixInfo && normalizeCrs(matrixInfo.code);
         var isStandard3857 = crsCode === 'EPSG:3857' || crsCode === 'EPSG:900913' || crsCode === 'EPSG:102100' || crsCode === 'EPSG:102113';
         var useBasemap = true;
-        if (wmtsMatrixsetAutoSelect && wmtsMatrixsetHideBasemapIfIncompatible) {
+        if (wmtsMatrixsetHideBasemapIfIncompatible) {
           useBasemap = chosenMatrixSetSupportsBasemap(firstMapInfo.tileMatrixSet);
         }
 
@@ -341,6 +350,10 @@ ckan.module('wmtskvppreview', function (jQuery, _) {
             crs: crs,
             maxBounds: mapLatLngBounds[firstMapInfo.id]
           });
+
+          if (useBasemap) {
+            addConfiguredBasemapIfPossible(self.map);
+          }
 
           callback();
         }
