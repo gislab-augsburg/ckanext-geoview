@@ -65,6 +65,7 @@ To install ckanext-geoview for development:
 * [OpenLayers Viewer](#openlayers-viewer)
 * [Leaflet GeoJSON Viewer](#leaflet-geojson-viewer)
 * [Leaflet WMTS Viewer](#leaflet-wmts-viewer)
+* [Leaflet WMTS-KVP Viewer](#leaflet-wmts-kvp-viewer)
 * [Leaflet ESRI Shapefile Viewer](#leaflet-esri-shapefile-viewer)
 
 
@@ -295,6 +296,84 @@ If you want the views to be created by default on all WMTS resources, add the pl
 ```
 ckan.views.default_views = ... wmts_view
 ```
+
+The WMTS viewer supports optional automatic TileMatrixSet selection for matrix sets based on keywords. This is useful when a WMTS service offers multiple matrix sets and not all of them match the configured basemap. Additionaly the basemap can be hidden if the displayed matrix set is not WebMercator XYZ-compatible (GoogleMaps/OSM compatible).
+
+Available configuration options are:
+
+```
+ckanext.geoview.wmts_matrixset_auto_select = true
+```
+
+Enable automatic TileMatrixSet selection; if `false`, the first advertised TileMatrixSet is used.
+
+```
+ckanext.geoview.wmts_matrixset_preferred_keywords = googlemapscompatible,global_webmercator,google3857,smerc
+```
+
+Comma-separated keywords used to prefer TileMatrixSets by identifier, title or WellKnownScaleSet during automatic selection.
+
+```
+ckanext.geoview.wmts_matrixset_hide_basemap_if_incompatible = true
+```
+
+If `false`, always show the basemap; if `true`, show the basemap only when the selected TileMatrixSet is WebMercator XYZ-compatible.
+
+```
+ckanext.geoview.wmts_matrixset_require_xyz_grid = false
+```
+
+If `true`, only strict standard WebMercator XYZ grids count as compatibility matches during automatic TileMatrixSet selection.
+
+
+If these settings are not configured, the old WMTS behaviour is kept.
+
+### Leaflet WMTS-KVP Viewer
+
+The [Leaflet](http://leafletjs.com/) WMTS-KVP viewer will render WMTS layers via KVP `GetCapabilities` / `GetTile` requests for those resources that have a `wmts_kvp` format. It is intended for WMTS services that need `service_proxy` and KVP requests instead of the RESTful WMTS tile path.
+
+To enable it, add `wmts_kvp_view` to your `ckan.plugins` setting:
+
+```
+ckan.plugins = ... resource_proxy wmts_kvp_view
+```
+
+If you want the views to be created by default on all WMTS-KVP resources, add the plugin to the following setting:
+
+```
+ckan.views.default_views = ... wmts_kvp_view
+```
+
+The WMTS viewer supports optional automatic TileMatrixSet selection for matrix sets based on keywords. This is useful when a WMTS service offers multiple matrix sets and not all of them match the configured basemap. Additionaly the basemap can be hidden if the displayed matrix set is not WebMercator XYZ-compatible (GoogleMaps/OSM compatible).
+
+Available configuration options are:
+
+```
+ckanext.geoview.wmts_matrixset_auto_select = true
+```
+
+Enable automatic TileMatrixSet selection; if `false`, the first advertised TileMatrixSet is used.
+
+```
+ckanext.geoview.wmts_matrixset_preferred_keywords = googlemapscompatible,global_webmercator,google3857,smerc
+```
+
+Comma-separated keywords used to prefer TileMatrixSets by identifier, title or WellKnownScaleSet during automatic selection.
+
+```
+ckanext.geoview.wmts_matrixset_hide_basemap_if_incompatible = true
+```
+
+If `false`, always show the basemap; if `true`, show the basemap only when the selected TileMatrixSet is WebMercator XYZ-compatible.
+
+```
+ckanext.geoview.wmts_matrixset_require_xyz_grid = false
+```
+
+If `true`, only strict standard WebMercator XYZ grids count as compatibility matches during automatic TileMatrixSet selection.
+
+
+If these settings are not configured, the old WMTS behaviour is kept.
 
 
 ### Leaflet ESRI Shapefile Viewer
