@@ -5,3 +5,8 @@ def test_plugin():
     """
     p = plugin.OLGeoView()
     assert p
+
+
+def test_wcs_plugin():
+    p = plugin.WCSView()
+    assert p

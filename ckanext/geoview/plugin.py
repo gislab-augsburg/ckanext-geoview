@@ -375,6 +375,61 @@ class WMTSKVPView(GeoViewBase):
         }
 
 
+class WCSView(GeoViewBase):
+    p.implements(p.ITemplateHelpers, inherit=True)
+
+    WCS = ["wcs"]
+
+    def info(self):
+        return {
+            "name": "wcs_view",
+            "title": "WCS",
+            "icon": "map-marker",
+            "iframed": True,
+            "default_title": toolkit._("WCS"),
+        }
+
+    def can_view(self, data_dict):
+        resource = data_dict["resource"]
+        format_lower = resource.get("format", "").lower()
+        same_domain = on_same_domain(data_dict)
+
+        if format_lower in self.WCS:
+            return same_domain or self.proxy_enabled
+        return False
+
+    def view_template(self, context, data_dict):
+        return "dataviewer/wcs.html"
+
+    def setup_template_variables(self, context, data_dict):
+        import ckanext.resourceproxy.plugin as proxy
+
+        same_domain = on_same_domain(data_dict)
+
+        if self.proxy_enabled and not same_domain:
+            proxy_url = proxy.get_proxified_resource_url(data_dict)
+            proxy_service_url = utils.get_proxified_service_url(data_dict)
+        else:
+            proxy_url = data_dict["resource"]["url"]
+            proxy_service_url = utils.normalize_service_url(data_dict["resource"])
+
+        data_dict["proxy_url"] = proxy_url
+        data_dict["proxy_service_url"] = proxy_service_url
+        data_dict["resource"]["original_url"] = data_dict["resource"].get("url")
+
+    def get_helpers(self):
+        def get_common_map_config_wcs():
+            map_config = utils.get_common_map_config()
+            map_config["wcs_preview_max_size"] = int(
+                toolkit.config.get("ckanext.geoview.wcs_preview.max_size", 1024)
+            )
+            return map_config
+
+        return {
+            "get_common_map_config_wcs": get_common_map_config_wcs,
+        }
+
+
 class SHPView(GeoViewBase):
     p.implements(p.ITemplateHelpers, inherit=True)
 

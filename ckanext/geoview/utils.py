@@ -16,6 +16,7 @@ GEOJSON_MAX_FILE_SIZE = 25 * 1024 * 1024
 
 
 MAX_FILE_SIZE = 3 * 1024 * 1024  # 1MB
+WCS_MAX_FILE_SIZE = 25 * 1024 * 1024
 CHUNK_SIZE = 512
 
 # HTTP request parameters that may conflict with OGC services
@@ -68,10 +69,17 @@ def proxy_service_resource(request, context, data_dict):
     log.info("Proxify resource {id}".format(id=resource_id))
     resource = toolkit.get_action("resource_show")(context, {"id": resource_id})
     url = normalize_service_url(resource)
-    return proxy_service_url(request, url)
+    max_file_size = MAX_FILE_SIZE
+    if resource.get("format", "").lower() == "wcs":
+        max_file_size = int(
+            toolkit.config.get(
+                "ckanext.geoview.wcs_preview.max_file_size", WCS_MAX_FILE_SIZE
+            )
+        )
+    return proxy_service_url(request, url, max_file_size=max_file_size)
 
 
-def proxy_service_url(req, url):
+def proxy_service_url(req, url, max_file_size=MAX_FILE_SIZE):
 
     parts = urlsplit(url)
     if not parts.scheme or not parts.netloc:
@@ -107,14 +115,14 @@ def proxy_service_url(req, url):
         # log.info('Request Headers: {h}'.format(h=r.request.headers))
 
         cl = r.headers.get("content-length")
-        if cl and int(cl) > MAX_FILE_SIZE:
+        if cl and int(cl) > max_file_size:
             toolkit.abort(
                 409,
                 (
                     """Content is too large to be proxied. Allowed
                 file size: {allowed}, Content-Length: {actual}. Url: """
                     + url
-                ).format(allowed=MAX_FILE_SIZE, actual=cl),
+                ).format(allowed=max_file_size, actual=cl),
             )
         if toolkit.check_ckan_version("2.9"):
             from flask import make_response
@@ -134,14 +142,14 @@ def proxy_service_url(req, url):
                 response.body_file.write(chunk)
             length += len(chunk)
 
-            if length >= MAX_FILE_SIZE:
+            if length >= max_file_size:
                 toolkit.abort(
                     409,
                     (
                         """Content is too large to be proxied. Allowed
                 file size: {allowed}, Content-Length: {actual}. Url: """
                         + url
-                    ).format(allowed=MAX_FILE_SIZE, actual=length),
+                    ).format(allowed=max_file_size, actual=length),
                 )
 
     except requests.exceptions.HTTPError as error:
