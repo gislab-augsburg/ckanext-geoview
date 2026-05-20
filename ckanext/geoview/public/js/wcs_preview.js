@@ -19,12 +19,11 @@ ckan.module('wcspreview', function(jQuery, _) {
       );
       this.coverages = [];
       this.coverageById = {};
-      this.defaultOpacity = 0.75;
+      this.defaultOpacity = 1;
       this.reloadDelay = 350;
       this.reloadTimer = null;
       this.map = null;
       this.layerSwitcher = null;
-      this.tocElement = null;
 
       this.initializeMap();
     },
@@ -84,7 +83,6 @@ ckan.module('wcspreview', function(jQuery, _) {
           opacity: this.defaultOpacity
         }];
         this.coverageById.coverage = this.coverages[0];
-        this.addToc();
         this.setCoverageVisible(this.coverages[0], true);
         return;
       }
@@ -103,8 +101,9 @@ ckan.module('wcspreview', function(jQuery, _) {
         self.coverages.forEach(function(coverage) {
           self.coverageById[coverage.id] = coverage;
         });
-        self.addToc();
-        self.setCoverageVisible(self.coverages[0], true);
+        self.coverages.forEach(function(coverage) {
+          self.setCoverageVisible(coverage, true);
+        });
         self.map.on('moveend', function() {
           self.scheduleVisibleCoverageReloads();
         });
@@ -156,6 +155,7 @@ ckan.module('wcspreview', function(jQuery, _) {
 
     readCoverages: function(capabilities, requestedCoverageId) {
       var coverages = [];
+      var defaultOpacity = this.defaultOpacity;
       var summaries = localElements(capabilities, 'CoverageSummary');
       var list = summaries.length ? summaries : localElements(capabilities, 'CoverageOfferingBrief');
 
@@ -168,7 +168,7 @@ ckan.module('wcspreview', function(jQuery, _) {
           id: id,
           title: firstLocalText(node, ['Title', 'label']) || id,
           bbox: readWgs84Bbox(node),
-          opacity: 0.75,
+          opacity: defaultOpacity,
           selected: false,
           loading: false,
           described: false,
@@ -209,7 +209,6 @@ ckan.module('wcspreview', function(jQuery, _) {
 
     setCoverageVisible: function(coverage, visible) {
       coverage.selected = visible;
-      this.updateToc();
 
       if (!visible) {
         if (coverage.layer) {
@@ -239,7 +238,6 @@ ckan.module('wcspreview', function(jQuery, _) {
       coverage.loading = true;
       coverage.reloadAfterCurrent = false;
       coverage.error = null;
-      this.updateToc();
 
       var loadPromise;
       if (coverage.directUrl) {
@@ -262,7 +260,6 @@ ckan.module('wcspreview', function(jQuery, _) {
         coverage.error = error.message || String(error);
       }).then(function() {
         coverage.loading = false;
-        self.updateToc();
         if (coverage.reloadAfterCurrent && coverage.selected) {
           self.scheduleCoverageReload(coverage);
         }
@@ -355,11 +352,14 @@ ckan.module('wcspreview', function(jQuery, _) {
 
     createCoverageLayer: function(blob, opacity) {
       var self = this;
-      return detectNoData(blob).then(function(nodata) {
-        var sourceInfo = {blob: blob};
-        if (nodata !== null && nodata !== undefined && !isNaN(nodata)) {
-          sourceInfo.nodata = parseFloat(nodata);
-        }
+      return getGeoTiffSourceInfo(blob).then(function(sourceInfo) {
+        return detectNoData(blob).then(function(nodata) {
+          if (nodata !== null && nodata !== undefined && !isNaN(nodata)) {
+            sourceInfo.nodata = parseFloat(nodata);
+          }
+          return sourceInfo;
+        });
+      }).then(function(sourceInfo) {
 
         var source = new ol.source.GeoTIFF({
           sources: [sourceInfo],
@@ -426,53 +426,6 @@ ckan.module('wcspreview', function(jQuery, _) {
           self.loadCoverageForCurrentView(coverage, false);
         }
       }, this.reloadDelay);
-    },
-
-    addToc: function() {
-      var element = document.createElement('div');
-      element.className = 'wcs-toc-panel';
-      this.tocElement = element;
-      document.getElementById('map').appendChild(element);
-      this.updateToc();
-    },
-
-    updateToc: function() {
-      var self = this;
-      if (!this.tocElement) {
-        return;
-      }
-
-      var list = $('<div></div>').addClass('wcs-toc-list');
-      this.coverages.forEach(function(coverage) {
-        var row = $('<label></label>').addClass('wcs-toc-row');
-        var checkbox = $('<input type="checkbox">')
-          .prop('checked', coverage.selected)
-          .on('change', function() {
-            self.setCoverageVisible(coverage, this.checked);
-          });
-        var title = $('<span></span>').addClass('wcs-toc-title').text(coverage.title || coverage.id);
-        var opacity = $('<input type="range" min="0" max="1" step="0.05">')
-          .addClass('wcs-opacity')
-          .val(coverage.opacity)
-          .on('input change', function() {
-            coverage.opacity = parseFloat(this.value);
-            if (coverage.layer) {
-              coverage.layer.setOpacity(coverage.opacity);
-            }
-          });
-
-        row.append(checkbox, title);
-        list.append(row);
-        list.append(opacity);
-
-        if (coverage.loading) {
-          list.append($('<div></div>').addClass('wcs-toc-status').text('Loading...'));
-        } else if (coverage.error) {
-          list.append($('<div></div>').addClass('wcs-toc-status wcs-toc-error').text(coverage.error));
-        }
-      });
-
-      $(this.tocElement).empty().append($('<div></div>').addClass('wcs-toc-header').text('WCS Coverages')).append(list);
     },
 
     getBaseLayers: function() {
@@ -762,6 +715,31 @@ function detectNoData(blob) {
     return image.getGDALNoData();
   }).catch(function() {
     return null;
+  });
+}
+
+function getGeoTiffSourceInfo(blob) {
+  var sourceInfo = {blob: blob};
+  if (typeof GeoTIFF === 'undefined' || !GeoTIFF.fromBlob) {
+    return Promise.resolve(sourceInfo);
+  }
+
+  return GeoTIFF.fromBlob(blob).then(function(tiff) {
+    return tiff.getImage();
+  }).then(function(image) {
+    if (!image || !image.getSamplesPerPixel) {
+      return sourceInfo;
+    }
+
+    var samples = image.getSamplesPerPixel();
+    if (samples <= 2) {
+      sourceInfo.bands = [1];
+    } else {
+      sourceInfo.bands = [1, 2, 3];
+    }
+    return sourceInfo;
+  }).catch(function() {
+    return sourceInfo;
   });
 }
 
