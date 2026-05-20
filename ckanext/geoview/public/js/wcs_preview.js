@@ -224,9 +224,6 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       if (coverage.layer) {
         coverage.layer.setVisible(true);
-        if (!coverage.directUrl) {
-          this.loadCoverageForCurrentView(coverage);
-        }
         return;
       }
 
@@ -394,12 +391,26 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       var visible = !coverage.layer || coverage.layer.getVisible();
       if (coverage.layer) {
+        if (coverage.visibilityListenerKey) {
+          ol.Observable.unByKey(coverage.visibilityListenerKey);
+        }
         this.map.removeLayer(coverage.layer);
       }
 
       coverage.layer = layer;
       coverage.layer.setVisible(visible);
+      this.bindCoverageVisibility(coverage);
       this.map.addLayer(layer);
+    },
+
+    bindCoverageVisibility: function(coverage) {
+      var self = this;
+      coverage.visibilityListenerKey = coverage.layer.on('change:visible', function() {
+        coverage.selected = coverage.layer.getVisible();
+        if (coverage.selected && !coverage.directUrl) {
+          self.loadCoverageForCurrentView(coverage);
+        }
+      });
     },
 
     scheduleVisibleCoverageReloads: function() {
