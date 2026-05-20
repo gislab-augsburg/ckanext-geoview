@@ -120,5 +120,7 @@ wcs_js:
 wcs_css:
   output: ckanext-geoview/%(version)s_wcs.css
   contents:
+    - css/ol_preview.css
     - js/vendor/openlayers/ol.css
+    - js/vendor/ol-helpers/ol-helpers.css
     - css/wcs_preview.css

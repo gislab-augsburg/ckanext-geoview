@@ -12,15 +12,18 @@
   padding: 12px;
 }
 
-.wcs-toc {
-  top: 40px;
+.wcs-toc-panel {
+  position: absolute;
+  z-index: 4;
+  top: 88px;
   right: 10px;
-  left: auto;
   max-width: 280px;
   max-height: 360px;
   overflow: auto;
   background: rgba(255, 255, 255, 0.9);
   padding: 8px;
+  border-radius: 2px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
 .wcs-toc-header {

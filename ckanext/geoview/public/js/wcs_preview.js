@@ -23,7 +23,8 @@ ckan.module('wcspreview', function(jQuery, _) {
       this.reloadDelay = 350;
       this.reloadTimer = null;
       this.map = null;
-      this.toc = null;
+      this.layerSwitcher = null;
+      this.tocElement = null;
 
       this.initializeMap();
     },
@@ -34,19 +35,31 @@ ckan.module('wcspreview', function(jQuery, _) {
 
     initializeMap: function() {
       var self = this;
-      this.getBaseLayer().then(function(baseLayer) {
-        self.map = new ol.Map({
+      this.getBaseLayers().then(function(baseLayers) {
+        var baseMapLayer = baseLayers[0];
+        self.layerSwitcher = new ol.control.HilatsLayerSwitcher();
+        self.map = new OL_HELPERS.LoggingMap({
           target: 'map',
-          layers: baseLayer ? [baseLayer] : [],
+          layers: baseLayers,
           controls: [
             new ol.control.ZoomSlider(),
-            new ol.control.MousePosition()
+            new ol.control.MousePosition(),
+            self.layerSwitcher
           ],
+          loadingDiv: false,
+          loadingListener: function(isLoading) {
+            self.layerSwitcher.isLoading(isLoading);
+          },
           view: new ol.View({
-            center: [0, 0],
-            zoom: 2
+            projection: baseMapLayer.getSource().getProjection() || OL_HELPERS.Mercator,
+            extent: baseMapLayer.getExtent()
           })
         });
+
+        self.map.getView().fit(
+          baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, self.map.getView().getProjection()),
+          {constrainResolution: false}
+        );
 
         self.loadCapabilities();
       }).catch(function() {
@@ -350,10 +363,11 @@ ckan.module('wcspreview', function(jQuery, _) {
 
         var source = new ol.source.GeoTIFF({
           sources: [sourceInfo],
-          convertToRGB: 'auto',
-          normalize: false
+          convertToRGB: 'auto'
         });
         return new ol.layer.WebGLTile({
+          title: null,
+          type: 'overlay',
           source: source,
           opacity: opacity,
           visible: true
@@ -367,6 +381,9 @@ ckan.module('wcspreview', function(jQuery, _) {
       if (!layer) {
         return;
       }
+
+      layer.set('title', coverage.title || coverage.id);
+      layer.set('type', 'overlay');
 
       if (coverage.layer) {
         this.map.removeLayer(coverage.layer);
@@ -412,16 +429,16 @@ ckan.module('wcspreview', function(jQuery, _) {
     },
 
     addToc: function() {
-      var control = document.createElement('div');
-      control.className = 'wcs-toc ol-unselectable ol-control';
-      this.toc = control;
-      this.map.addControl(new ol.control.Control({element: control}));
+      var element = document.createElement('div');
+      element.className = 'wcs-toc-panel';
+      this.tocElement = element;
+      document.getElementById('map').appendChild(element);
       this.updateToc();
     },
 
     updateToc: function() {
       var self = this;
-      if (!this.toc) {
+      if (!this.tocElement) {
         return;
       }
 
@@ -455,18 +472,54 @@ ckan.module('wcspreview', function(jQuery, _) {
         }
       });
 
-      $(this.toc).empty().append($('<div></div>').addClass('wcs-toc-header').text('WCS Coverages')).append(list);
+      $(this.tocElement).empty().append($('<div></div>').addClass('wcs-toc-header').text('WCS Coverages')).append(list);
     },
 
-    getBaseLayer: function() {
+    getBaseLayers: function() {
       if (!OL_HELPERS || !OL_HELPERS.createLayerFromConfig) {
-        return Promise.resolve(null);
+        return Promise.reject('OpenLayers helpers are not available.');
       }
 
       var mapConfig = $.extend({}, this.options.map_config || {});
+      var baseMapsConfig = this.options.basemapsConfig;
+
+      if (!baseMapsConfig) {
+        var config = {
+          type: mapConfig.type
+        };
+        if (config.type) {
+          var prefix = config.type + '.';
+          for (var fieldName in mapConfig) {
+            if (fieldName.startsWith(prefix)) {
+              config[fieldName.substring(prefix.length)] = mapConfig[fieldName];
+            }
+          }
+        }
+        baseMapsConfig = [config];
+      }
+
+      return this.createBaseLayer(baseMapsConfig[0]).then(function(firstLayerList) {
+        var layers = firstLayerList.slice();
+        var remaining = baseMapsConfig.slice(1).map(function(config) {
+          return OL_HELPERS.createLayerFromConfig(config, true).then(function(layerList) {
+            layerList.forEach(function(layer) {
+              layer.setVisible(false);
+              layers.push(layer);
+            });
+          });
+        });
+
+        return Promise.all(remaining).then(function() {
+          return layers;
+        });
+      });
+    },
+
+    createBaseLayer: function(mapConfig) {
+      mapConfig = $.extend({}, mapConfig || {});
       if (mapConfig.type === 'mapbox') {
         if (!mapConfig.map_id || !mapConfig.access_token) {
-          return Promise.resolve(null);
+          return Promise.reject('MapBox base map requires a map_id and access_token.');
         }
         mapConfig.url = [
           '//a.tiles.mapbox.com/v4/' + mapConfig.map_id + '/${z}/${x}/${y}.png?access_token=' + mapConfig.access_token,
@@ -477,13 +530,11 @@ ckan.module('wcspreview', function(jQuery, _) {
         mapConfig.attribution = '<a href="https://www.mapbox.com/about/maps/" target="_blank">&copy; Mapbox &copy; OpenStreetMap </a>';
       } else if (mapConfig.type === 'custom') {
         mapConfig.type = 'XYZ';
-      } else if (!mapConfig.type) {
+      } else {
         mapConfig.type = 'OSM';
       }
 
-      return OL_HELPERS.createLayerFromConfig(mapConfig, true).catch(function() {
-        return null;
-      });
+      return OL_HELPERS.createLayerFromConfig(mapConfig, true);
     }
   };
 });

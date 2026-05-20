@@ -415,6 +415,7 @@ class WCSView(GeoViewBase):
 
         data_dict["proxy_url"] = proxy_url
         data_dict["proxy_service_url"] = proxy_service_url
+        data_dict["basemapsConfig"] = self.basemapsConfig
         data_dict["resource"]["original_url"] = data_dict["resource"].get("url")
 
     def get_helpers(self):
