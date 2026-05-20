@@ -1,4 +1,4 @@
-/* global ckan, ol, OL_HELPERS, $, preload_resource */
+/* global ckan, ol, OL_HELPERS, $, preload_resource, GeoTIFF */
 // WCS preview module. Keeps WCS-specific GeoTIFF handling isolated from the
 // existing generic OpenLayers viewer.
 
@@ -12,29 +12,67 @@ ckan.module('wcspreview', function(jQuery, _) {
     _onReady: function() {
       this.el.empty();
       this.el.append($('<div></div>').attr('id', 'map'));
+
       this.previewMaxSize = parseInt(
         (this.options.map_config && this.options.map_config.wcs_preview_max_size) || 1024,
         10
       );
-      this.loadPreview();
+      this.coverages = [];
+      this.coverageById = {};
+      this.defaultOpacity = 0.75;
+      this.reloadDelay = 350;
+      this.reloadTimer = null;
+      this.map = null;
+      this.toc = null;
+
+      this.initializeMap();
     },
 
     showError: function(message) {
       this.el.html($('<div></div>').addClass('wcs-preview-error').text(message));
     },
 
-    loadPreview: function() {
+    initializeMap: function() {
+      var self = this;
+      this.getBaseLayer().then(function(baseLayer) {
+        self.map = new ol.Map({
+          target: 'map',
+          layers: baseLayer ? [baseLayer] : [],
+          controls: [
+            new ol.control.ZoomSlider(),
+            new ol.control.MousePosition()
+          ],
+          view: new ol.View({
+            center: [0, 0],
+            zoom: 2
+          })
+        });
+
+        self.loadCapabilities();
+      }).catch(function() {
+        self.showError('Could not initialize WCS preview map.');
+      });
+    },
+
+    loadCapabilities: function() {
       var self = this;
       var resourceUrl = this.getResourceUrl();
-      var coverageId = this.getRequestedCoverageId(resourceUrl);
+      var requestedCoverageId = this.getRequestedCoverageId(resourceUrl);
       var serviceUrl = this.options.proxy_service_url || stripFragment(resourceUrl);
 
+      this.serviceUrl = serviceUrl;
+
       if (isGetCoverageUrl(resourceUrl)) {
-        this.fetchCoverage(resourceUrl).then(function(blob) {
-          self.showCoverage(blob);
-        }).catch(function(error) {
-          self.showError(error.message || String(error));
-        });
+        this.coverages = [{
+          id: 'coverage',
+          title: 'Coverage',
+          selected: true,
+          directUrl: resourceUrl,
+          opacity: this.defaultOpacity
+        }];
+        this.coverageById.coverage = this.coverages[0];
+        this.addToc();
+        this.setCoverageVisible(this.coverages[0], true);
         return;
       }
 
@@ -43,16 +81,20 @@ ckan.module('wcspreview', function(jQuery, _) {
         REQUEST: 'GetCapabilities',
         VERSION: '2.0.1'
       })).then(function(capabilities) {
-        var coverage = self.selectCoverage(capabilities, coverageId);
-        if (!coverage.id) {
+        self.capabilities = capabilities;
+        self.version = getWcsVersion(capabilities);
+        self.coverages = self.readCoverages(capabilities, requestedCoverageId);
+        if (!self.coverages.length) {
           throw new Error('No WCS coverage found.');
         }
-        return self.describeCoverage(serviceUrl, capabilities, coverage);
-      }).then(function(context) {
-        var url = self.buildGetCoverageUrl(serviceUrl, context);
-        return self.fetchCoverage(url);
-      }).then(function(blob) {
-        self.showCoverage(blob);
+        self.coverages.forEach(function(coverage) {
+          self.coverageById[coverage.id] = coverage;
+        });
+        self.addToc();
+        self.setCoverageVisible(self.coverages[0], true);
+        self.map.on('moveend', function() {
+          self.scheduleVisibleCoverageReloads();
+        });
       }).catch(function(error) {
         self.showError(error.message || String(error));
       });
@@ -99,28 +141,40 @@ ckan.module('wcspreview', function(jQuery, _) {
       });
     },
 
-    selectCoverage: function(capabilities, requestedCoverageId) {
-      var coverage = {};
+    readCoverages: function(capabilities, requestedCoverageId) {
+      var coverages = [];
       var summaries = localElements(capabilities, 'CoverageSummary');
       var list = summaries.length ? summaries : localElements(capabilities, 'CoverageOfferingBrief');
 
       list.each(function(i, node) {
         var id = firstLocalText(node, ['CoverageId', 'Identifier', 'name']);
-        if (!coverage.id && (!requestedCoverageId || id === requestedCoverageId)) {
-          coverage.id = id;
-          coverage.bbox = readWgs84Bbox(node);
+        if (!id || (requestedCoverageId && id !== requestedCoverageId)) {
+          return;
         }
+        coverages.push({
+          id: id,
+          title: firstLocalText(node, ['Title', 'label']) || id,
+          bbox: readWgs84Bbox(node),
+          opacity: 0.75,
+          selected: false,
+          loading: false,
+          described: false,
+          layer: null
+        });
       });
 
-      if (requestedCoverageId && !coverage.id) {
+      if (requestedCoverageId && !coverages.length) {
         throw new Error('Requested WCS coverage not found: ' + requestedCoverageId);
       }
-      return coverage;
+      return coverages;
     },
 
-    describeCoverage: function(serviceUrl, capabilities, coverage) {
-      var self = this;
-      var version = getWcsVersion(capabilities);
+    describeCoverage: function(coverage) {
+      if (coverage.describePromise) {
+        return coverage.describePromise;
+      }
+
+      var version = this.version || '2.0.1';
       var params = {
         SERVICE: 'WCS',
         REQUEST: 'DescribeCoverage',
@@ -128,24 +182,86 @@ ckan.module('wcspreview', function(jQuery, _) {
       };
       params[version.indexOf('2.') === 0 ? 'COVERAGEID' : 'IDENTIFIERS'] = coverage.id;
 
-      return this.fetchXml(withParams(serviceUrl, params)).then(function(description) {
-        return {
-          coverage: coverage,
-          description: description,
-          version: version,
-          maxSize: self.previewMaxSize
-        };
+      coverage.describePromise = this.fetchXml(withParams(this.serviceUrl, params)).then(function(description) {
+        coverage.description = description;
+        coverage.envelope = readEnvelope(description) || {};
+        coverage.gridSize = readGridSize(description);
+        coverage.format = preferredFormat(description);
+        coverage.described = true;
+        return coverage;
+      });
+
+      return coverage.describePromise;
+    },
+
+    setCoverageVisible: function(coverage, visible) {
+      coverage.selected = visible;
+      this.updateToc();
+
+      if (!visible) {
+        if (coverage.layer) {
+          coverage.layer.setVisible(false);
+        }
+        return;
+      }
+
+      if (coverage.layer) {
+        coverage.layer.setVisible(true);
+        this.scheduleCoverageReload(coverage);
+        return;
+      }
+
+      this.loadCoverageForCurrentView(coverage, true);
+    },
+
+    loadCoverageForCurrentView: function(coverage, initialLoad) {
+      var self = this;
+      var url;
+
+      if (coverage.loading) {
+        coverage.reloadAfterCurrent = true;
+        return;
+      }
+
+      coverage.loading = true;
+      coverage.reloadAfterCurrent = false;
+      coverage.error = null;
+      this.updateToc();
+
+      var loadPromise;
+      if (coverage.directUrl) {
+        url = coverage.directUrl;
+        loadPromise = Promise.resolve(coverage);
+      } else {
+        loadPromise = this.describeCoverage(coverage).then(function(describedCoverage) {
+          url = self.buildGetCoverageUrl(describedCoverage, initialLoad);
+          return describedCoverage;
+        });
+      }
+
+      loadPromise.then(function(describedCoverage) {
+        return self.fetchCoverage(url).then(function(blob) {
+          return self.createCoverageLayer(blob, describedCoverage.opacity).then(function(layer) {
+            self.replaceCoverageLayer(describedCoverage, layer, initialLoad);
+          });
+        });
+      }).catch(function(error) {
+        coverage.error = error.message || String(error);
+      }).then(function() {
+        coverage.loading = false;
+        self.updateToc();
+        if (coverage.reloadAfterCurrent && coverage.selected) {
+          self.scheduleCoverageReload(coverage);
+        }
       });
     },
 
-    buildGetCoverageUrl: function(serviceUrl, context) {
-      var version = context.version;
-      var description = context.description;
-      var coverage = context.coverage;
-      var envelope = readEnvelope(description) || {};
-      var bbox = envelope.bbox || coverage.bbox;
-      var size = previewSize(readGridSize(description), context.maxSize);
-      var format = preferredFormat(description);
+    buildGetCoverageUrl: function(coverage, initialLoad) {
+      var version = this.version || '2.0.1';
+      var envelope = coverage.envelope || {};
+      var bbox = initialLoad ? (envelope.bbox || coverage.bbox) : this.getViewportBbox(envelope);
+      var size = this.getRequestSize(coverage, bbox, initialLoad);
+      var format = coverage.format || 'image/tiff';
       var params = {
         SERVICE: 'WCS',
         REQUEST: 'GetCoverage',
@@ -162,10 +278,11 @@ ckan.module('wcspreview', function(jQuery, _) {
             axes[1] + '(' + bbox[1] + ',' + bbox[3] + ')'
           ];
         }
-        if (size && envelope.gridAxisLabels) {
+        if (size) {
+          var gridAxes = envelope.gridAxisLabels || envelope.axisLabels || ['x', 'y'];
           params.SCALESIZE = [
-            envelope.gridAxisLabels[0] + '(' + size[0] + ')',
-            envelope.gridAxisLabels[1] + '(' + size[1] + ')'
+            gridAxes[0] + '(' + size[0] + ')',
+            gridAxes[1] + '(' + size[1] + ')'
           ].join(',');
         }
       } else if (version.indexOf('1.0') === 0) {
@@ -188,48 +305,157 @@ ckan.module('wcspreview', function(jQuery, _) {
         }
       }
 
-      return withParams(serviceUrl, params);
+      return withParams(this.serviceUrl, params);
     },
 
-    showCoverage: function(blob) {
+    getViewportBbox: function(envelope) {
+      if (!this.map || !this.map.getView()) {
+        return envelope.bbox || null;
+      }
+
+      var view = this.map.getView();
+      var size = this.map.getSize();
+      var extent = size && view.calculateExtent(size);
+      if (!extent) {
+        return envelope.bbox || null;
+      }
+
+      var sourceProjection = view.getProjection();
+      var targetProjection = envelope.crs && ol.proj.get(normalizeCrs(envelope.crs));
+      if (targetProjection && sourceProjection && sourceProjection.getCode() !== targetProjection.getCode()) {
+        extent = ol.proj.transformExtent(extent, sourceProjection, targetProjection);
+      }
+
+      if (envelope.bbox) {
+        extent = intersectBbox(extent, envelope.bbox);
+      }
+      return extent;
+    },
+
+    getRequestSize: function(coverage, bbox, initialLoad) {
+      var mapSize = this.map && this.map.getSize && this.map.getSize();
+      if (!initialLoad && mapSize) {
+        return constrainSize(mapSize[0], mapSize[1], this.previewMaxSize);
+      }
+      return previewSize(coverage.gridSize, this.previewMaxSize);
+    },
+
+    createCoverageLayer: function(blob, opacity) {
       var self = this;
-      if (!ol.source.GeoTIFF || !ol.layer.WebGLTile) {
-        this.showError('OpenLayers GeoTIFF rendering is not available.');
+      return detectNoData(blob).then(function(nodata) {
+        var sourceInfo = {blob: blob};
+        if (nodata !== null && nodata !== undefined && !isNaN(nodata)) {
+          sourceInfo.nodata = parseFloat(nodata);
+        }
+
+        var source = new ol.source.GeoTIFF({
+          sources: [sourceInfo],
+          convertToRGB: 'auto',
+          normalize: false
+        });
+        return new ol.layer.WebGLTile({
+          source: source,
+          opacity: opacity,
+          visible: true
+        });
+      }).catch(function() {
+        self.showError('OpenLayers could not create a WCS GeoTIFF layer.');
+      });
+    },
+
+    replaceCoverageLayer: function(coverage, layer, initialLoad) {
+      if (!layer) {
         return;
       }
 
-      var source = new ol.source.GeoTIFF({
-        sources: [{blob: blob}],
-        convertToRGB: 'auto'
-      });
-      var coverageLayer = new ol.layer.WebGLTile({source: source});
+      if (coverage.layer) {
+        this.map.removeLayer(coverage.layer);
+      }
 
-      this.getBaseLayer().then(function(baseLayer) {
-        var layers = baseLayer ? [baseLayer, coverageLayer] : [coverageLayer];
-        var map = new ol.Map({
-          target: 'map',
-          layers: layers,
-          controls: [
-            new ol.control.ZoomSlider(),
-            new ol.control.MousePosition()
-          ],
-          view: new ol.View({
-            center: [0, 0],
-            zoom: 2
-          })
-        });
+      coverage.layer = layer;
+      this.map.addLayer(layer);
 
-        source.getView().then(function(viewOptions) {
+      if (initialLoad) {
+        var map = this.map;
+        layer.getSource().getView().then(function(viewOptions) {
           map.setView(new ol.View(viewOptions));
         }).catch(function() {
-          map.getView().fit(
-            ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, map.getView().getProjection()),
-            {constrainResolution: false}
-          );
+          if (coverage.bbox) {
+            map.getView().fit(
+              ol.proj.transformExtent(coverage.bbox, OL_HELPERS.EPSG4326, map.getView().getProjection()),
+              {constrainResolution: false}
+            );
+          }
         });
-      }).catch(function() {
-        self.showError('Could not initialize WCS preview map.');
+      }
+    },
+
+    scheduleVisibleCoverageReloads: function() {
+      var self = this;
+      window.clearTimeout(this.reloadTimer);
+      this.reloadTimer = window.setTimeout(function() {
+        self.coverages.forEach(function(coverage) {
+          if (coverage.selected && !coverage.directUrl) {
+            self.loadCoverageForCurrentView(coverage, false);
+          }
+        });
+      }, this.reloadDelay);
+    },
+
+    scheduleCoverageReload: function(coverage) {
+      var self = this;
+      window.setTimeout(function() {
+        if (coverage.selected && !coverage.directUrl) {
+          self.loadCoverageForCurrentView(coverage, false);
+        }
+      }, this.reloadDelay);
+    },
+
+    addToc: function() {
+      var control = document.createElement('div');
+      control.className = 'wcs-toc ol-unselectable ol-control';
+      this.toc = control;
+      this.map.addControl(new ol.control.Control({element: control}));
+      this.updateToc();
+    },
+
+    updateToc: function() {
+      var self = this;
+      if (!this.toc) {
+        return;
+      }
+
+      var list = $('<div></div>').addClass('wcs-toc-list');
+      this.coverages.forEach(function(coverage) {
+        var row = $('<label></label>').addClass('wcs-toc-row');
+        var checkbox = $('<input type="checkbox">')
+          .prop('checked', coverage.selected)
+          .on('change', function() {
+            self.setCoverageVisible(coverage, this.checked);
+          });
+        var title = $('<span></span>').addClass('wcs-toc-title').text(coverage.title || coverage.id);
+        var opacity = $('<input type="range" min="0" max="1" step="0.05">')
+          .addClass('wcs-opacity')
+          .val(coverage.opacity)
+          .on('input change', function() {
+            coverage.opacity = parseFloat(this.value);
+            if (coverage.layer) {
+              coverage.layer.setOpacity(coverage.opacity);
+            }
+          });
+
+        row.append(checkbox, title);
+        list.append(row);
+        list.append(opacity);
+
+        if (coverage.loading) {
+          list.append($('<div></div>').addClass('wcs-toc-status').text('Loading...'));
+        } else if (coverage.error) {
+          list.append($('<div></div>').addClass('wcs-toc-status wcs-toc-error').text(coverage.error));
+        }
       });
+
+      $(this.toc).empty().append($('<div></div>').addClass('wcs-toc-header').text('WCS Coverages')).append(list);
     },
 
     getBaseLayer: function() {
@@ -372,8 +598,10 @@ function previewSize(size, maxSize) {
   if (!size) {
     return null;
   }
-  var width = size[0];
-  var height = size[1];
+  return constrainSize(size[0], size[1], maxSize);
+}
+
+function constrainSize(width, height, maxSize) {
   var scale = Math.min(1, maxSize / Math.max(width, height));
   return [
     Math.max(1, Math.round(width * scale)),
@@ -402,6 +630,22 @@ function preferredFormat(xml) {
 function normalizeCrs(crs) {
   var match = String(crs || '').match(/EPSG(?:::|\/0\/|:)(\d+)/i);
   return match ? 'EPSG:' + match[1] : crs;
+}
+
+function intersectBbox(a, b) {
+  if (!a || !b) {
+    return a || b || null;
+  }
+  var bbox = [
+    Math.max(a[0], b[0]),
+    Math.max(a[1], b[1]),
+    Math.min(a[2], b[2]),
+    Math.min(a[3], b[3])
+  ];
+  if (bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
+    return b;
+  }
+  return bbox;
 }
 
 function extractGeoTiffBlob(buffer, contentType) {
@@ -452,6 +696,22 @@ function findMultipartBoundary(bytes, start, contentType) {
     }
   }
   return null;
+}
+
+function detectNoData(blob) {
+  if (typeof GeoTIFF === 'undefined' || !GeoTIFF.fromBlob) {
+    return Promise.resolve(null);
+  }
+  return GeoTIFF.fromBlob(blob).then(function(tiff) {
+    return tiff.getImage();
+  }).then(function(image) {
+    if (!image || !image.getGDALNoData) {
+      return null;
+    }
+    return image.getGDALNoData();
+  }).catch(function() {
+    return null;
+  });
 }
 
 function asciiBytes(text) {
