@@ -20,8 +20,6 @@ ckan.module('wcspreview', function(jQuery, _) {
       this.coverages = [];
       this.coverageById = {};
       this.defaultOpacity = 1;
-      this.reloadDelay = 350;
-      this.reloadTimer = null;
       this.map = null;
       this.layerSwitcher = null;
 
@@ -101,11 +99,13 @@ ckan.module('wcspreview', function(jQuery, _) {
         self.coverages.forEach(function(coverage) {
           self.coverageById[coverage.id] = coverage;
         });
-        self.coverages.forEach(function(coverage) {
-          self.setCoverageVisible(coverage, true);
-        });
-        self.map.on('moveend', function() {
-          self.scheduleVisibleCoverageReloads();
+        return Promise.all(self.coverages.map(function(coverage) {
+          return self.describeCoverage(coverage);
+        })).then(function() {
+          fitCoveragesBbox(self.map, self.coverages);
+          self.coverages.forEach(function(coverage) {
+            self.setCoverageVisible(coverage, true);
+          });
         });
       }).catch(function(error) {
         self.showError(error.message || String(error));
@@ -219,24 +219,21 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       if (coverage.layer) {
         coverage.layer.setVisible(true);
-        this.scheduleCoverageReload(coverage);
         return;
       }
 
-      this.loadCoverageForCurrentView(coverage, true);
+      this.loadCoverageForCurrentView(coverage);
     },
 
-    loadCoverageForCurrentView: function(coverage, initialLoad) {
+    loadCoverageForCurrentView: function(coverage) {
       var self = this;
       var url;
 
       if (coverage.loading) {
-        coverage.reloadAfterCurrent = true;
         return;
       }
 
       coverage.loading = true;
-      coverage.reloadAfterCurrent = false;
       coverage.error = null;
 
       var loadPromise;
@@ -245,7 +242,7 @@ ckan.module('wcspreview', function(jQuery, _) {
         loadPromise = Promise.resolve(coverage);
       } else {
         loadPromise = this.describeCoverage(coverage).then(function(describedCoverage) {
-          url = self.buildGetCoverageUrl(describedCoverage, initialLoad);
+          url = self.buildGetCoverageUrl(describedCoverage);
           return describedCoverage;
         });
       }
@@ -253,24 +250,21 @@ ckan.module('wcspreview', function(jQuery, _) {
       loadPromise.then(function(describedCoverage) {
         return self.fetchCoverage(url).then(function(blob) {
           return self.createCoverageLayer(blob, describedCoverage.opacity).then(function(layer) {
-            self.replaceCoverageLayer(describedCoverage, layer, initialLoad);
+            self.replaceCoverageLayer(describedCoverage, layer);
           });
         });
       }).catch(function(error) {
         coverage.error = error.message || String(error);
       }).then(function() {
         coverage.loading = false;
-        if (coverage.reloadAfterCurrent && coverage.selected) {
-          self.scheduleCoverageReload(coverage);
-        }
       });
     },
 
-    buildGetCoverageUrl: function(coverage, initialLoad) {
+    buildGetCoverageUrl: function(coverage) {
       var version = this.version || '2.0.1';
       var envelope = coverage.envelope || {};
-      var bbox = initialLoad ? (envelope.bbox || coverage.bbox) : this.getViewportBbox(envelope);
-      var size = this.getRequestSize(coverage, bbox, initialLoad);
+      var bbox = envelope.bbox || coverage.bbox;
+      var size = this.getRequestSize(coverage);
       var format = coverage.format || 'image/tiff';
       var params = {
         SERVICE: 'WCS',
@@ -318,35 +312,7 @@ ckan.module('wcspreview', function(jQuery, _) {
       return withParams(this.serviceUrl, params);
     },
 
-    getViewportBbox: function(envelope) {
-      if (!this.map || !this.map.getView()) {
-        return envelope.bbox || null;
-      }
-
-      var view = this.map.getView();
-      var size = this.map.getSize();
-      var extent = size && view.calculateExtent(size);
-      if (!extent) {
-        return envelope.bbox || null;
-      }
-
-      var sourceProjection = view.getProjection();
-      var targetProjection = envelope.crs && ol.proj.get(normalizeCrs(envelope.crs));
-      if (targetProjection && sourceProjection && sourceProjection.getCode() !== targetProjection.getCode()) {
-        extent = ol.proj.transformExtent(extent, sourceProjection, targetProjection);
-      }
-
-      if (envelope.bbox) {
-        extent = intersectBbox(extent, envelope.bbox);
-      }
-      return extent;
-    },
-
-    getRequestSize: function(coverage, bbox, initialLoad) {
-      var mapSize = this.map && this.map.getSize && this.map.getSize();
-      if (!initialLoad && mapSize) {
-        return constrainSize(mapSize[0], mapSize[1], this.previewMaxSize);
-      }
+    getRequestSize: function(coverage) {
       return previewSize(coverage.gridSize, this.previewMaxSize);
     },
 
@@ -377,7 +343,7 @@ ckan.module('wcspreview', function(jQuery, _) {
       });
     },
 
-    replaceCoverageLayer: function(coverage, layer, initialLoad) {
+    replaceCoverageLayer: function(coverage, layer) {
       if (!layer) {
         return;
       }
@@ -391,38 +357,6 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       coverage.layer = layer;
       this.map.addLayer(layer);
-
-      if (initialLoad) {
-        var map = this.map;
-        layer.getSource().getView().then(function(viewOptions) {
-          var view = new ol.View(unconstrainedViewOptions(viewOptions));
-          map.setView(view);
-          fitCoverageBbox(map, coverage);
-        }).catch(function() {
-          fitCoverageBbox(map, coverage);
-        });
-      }
-    },
-
-    scheduleVisibleCoverageReloads: function() {
-      var self = this;
-      window.clearTimeout(this.reloadTimer);
-      this.reloadTimer = window.setTimeout(function() {
-        self.coverages.forEach(function(coverage) {
-          if (coverage.selected && !coverage.directUrl) {
-            self.loadCoverageForCurrentView(coverage, false);
-          }
-        });
-      }, this.reloadDelay);
-    },
-
-    scheduleCoverageReload: function(coverage) {
-      var self = this;
-      window.setTimeout(function() {
-        if (coverage.selected && !coverage.directUrl) {
-          self.loadCoverageForCurrentView(coverage, false);
-        }
-      }, this.reloadDelay);
     },
 
     getBaseLayers: function() {
@@ -633,55 +567,27 @@ function normalizeCrs(crs) {
   return match ? 'EPSG:' + match[1] : crs;
 }
 
-function intersectBbox(a, b) {
-  if (!a || !b) {
-    return a || b || null;
-  }
-  var bbox = [
-    Math.max(a[0], b[0]),
-    Math.max(a[1], b[1]),
-    Math.min(a[2], b[2]),
-    Math.min(a[3], b[3])
-  ];
-  if (bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
-    return b;
-  }
-  return bbox;
-}
-
-function unconstrainedViewOptions(viewOptions) {
-  var options = $.extend({}, viewOptions || {});
-  delete options.extent;
-  delete options.resolutions;
-  delete options.minResolution;
-  delete options.maxResolution;
-  delete options.minZoom;
-  delete options.maxZoom;
-  options.constrainOnlyCenter = true;
-  options.smoothExtentConstraint = true;
-  return options;
-}
-
-function fitCoverageBbox(map, coverage) {
+function fitCoveragesBbox(map, coverages) {
   var view = map && map.getView && map.getView();
   if (!view) {
     return;
   }
 
-  var envelope = coverage.envelope || {};
-  var bbox = envelope.bbox || coverage.bbox;
-  if (!bbox) {
+  var extent = null;
+  coverages.forEach(function(coverage) {
+    var projected = coverageProjectedBbox(coverage, view.getProjection());
+    if (projected) {
+      extent = extent ? [
+        Math.min(extent[0], projected[0]),
+        Math.min(extent[1], projected[1]),
+        Math.max(extent[2], projected[2]),
+        Math.max(extent[3], projected[3])
+      ] : projected;
+    }
+  });
+
+  if (!extent) {
     return;
-  }
-
-  var sourceProjection = envelope.crs && ol.proj.get(normalizeCrs(envelope.crs));
-  var targetProjection = view.getProjection();
-  var extent = bbox;
-
-  if (sourceProjection && targetProjection && sourceProjection.getCode() !== targetProjection.getCode()) {
-    extent = ol.proj.transformExtent(bbox, sourceProjection, targetProjection);
-  } else if (!sourceProjection && targetProjection && targetProjection.getCode() !== OL_HELPERS.EPSG4326) {
-    extent = ol.proj.transformExtent(bbox, OL_HELPERS.EPSG4326, targetProjection);
   }
 
   view.fit(extent, {
@@ -689,6 +595,25 @@ function fitCoverageBbox(map, coverage) {
     constrainResolution: false,
     nearest: false
   });
+}
+
+function coverageProjectedBbox(coverage, targetProjection) {
+  var envelope = coverage.envelope || {};
+  var bbox = envelope.bbox || coverage.bbox;
+  if (!bbox) {
+    return null;
+  }
+
+  var sourceProjection = envelope.crs && ol.proj.get(normalizeCrs(envelope.crs));
+
+  if (sourceProjection && targetProjection && sourceProjection.getCode() !== targetProjection.getCode()) {
+    return ol.proj.transformExtent(bbox, sourceProjection, targetProjection);
+  }
+  if (!sourceProjection && targetProjection && targetProjection.getCode() !== OL_HELPERS.EPSG4326.getCode()) {
+    return ol.proj.transformExtent(bbox, OL_HELPERS.EPSG4326, targetProjection);
+  }
+
+  return bbox;
 }
 
 function extractGeoTiffBlob(buffer, contentType) {
