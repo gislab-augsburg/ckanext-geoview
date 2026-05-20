@@ -20,6 +20,8 @@ ckan.module('wcspreview', function(jQuery, _) {
       this.coverages = [];
       this.coverageById = {};
       this.defaultOpacity = 1;
+      this.reloadDelay = 350;
+      this.reloadTimer = null;
       this.map = null;
       this.layerSwitcher = null;
 
@@ -105,6 +107,9 @@ ckan.module('wcspreview', function(jQuery, _) {
           fitCoveragesBbox(self.map, self.coverages);
           self.coverages.forEach(function(coverage) {
             self.setCoverageVisible(coverage, true);
+          });
+          self.map.on('moveend', function() {
+            self.scheduleVisibleCoverageReloads();
           });
         });
       }).catch(function(error) {
@@ -263,8 +268,8 @@ ckan.module('wcspreview', function(jQuery, _) {
     buildGetCoverageUrl: function(coverage) {
       var version = this.version || '2.0.1';
       var envelope = coverage.envelope || {};
-      var bbox = envelope.bbox || coverage.bbox;
-      var size = this.getRequestSize(coverage);
+      var bbox = this.getCoverageRequestBbox(coverage);
+      var size = this.getRequestSize(coverage, bbox);
       var format = coverage.format || 'image/tiff';
       var params = {
         SERVICE: 'WCS',
@@ -312,7 +317,40 @@ ckan.module('wcspreview', function(jQuery, _) {
       return withParams(this.serviceUrl, params);
     },
 
-    getRequestSize: function(coverage) {
+    getCoverageRequestBbox: function(coverage) {
+      var envelope = coverage.envelope || {};
+      return this.getViewportBbox(envelope) || envelope.bbox || coverage.bbox;
+    },
+
+    getViewportBbox: function(envelope) {
+      if (!this.map || !this.map.getView()) {
+        return null;
+      }
+
+      var view = this.map.getView();
+      var size = this.map.getSize();
+      var extent = size && view.calculateExtent(size);
+      if (!extent) {
+        return null;
+      }
+
+      var sourceProjection = view.getProjection();
+      var targetProjection = envelope.crs && ol.proj.get(normalizeCrs(envelope.crs));
+      if (targetProjection && sourceProjection && sourceProjection.getCode() !== targetProjection.getCode()) {
+        extent = ol.proj.transformExtent(extent, sourceProjection, targetProjection);
+      }
+
+      if (envelope.bbox) {
+        extent = intersectBbox(extent, envelope.bbox);
+      }
+      return extent;
+    },
+
+    getRequestSize: function(coverage, bbox) {
+      var mapSize = this.map && this.map.getSize && this.map.getSize();
+      if (mapSize && bbox) {
+        return constrainSize(mapSize[0], mapSize[1], this.previewMaxSize);
+      }
       return previewSize(coverage.gridSize, this.previewMaxSize);
     },
 
@@ -351,12 +389,30 @@ ckan.module('wcspreview', function(jQuery, _) {
       layer.set('title', coverage.title || coverage.id);
       layer.set('type', 'overlay');
 
+      var visible = !coverage.layer || coverage.layer.getVisible();
       if (coverage.layer) {
         this.map.removeLayer(coverage.layer);
       }
 
       coverage.layer = layer;
+      coverage.layer.setVisible(visible);
       this.map.addLayer(layer);
+    },
+
+    scheduleVisibleCoverageReloads: function() {
+      var self = this;
+      window.clearTimeout(this.reloadTimer);
+      this.reloadTimer = window.setTimeout(function() {
+        self.coverages.forEach(function(coverage) {
+          if (self.isCoverageVisible(coverage) && !coverage.directUrl) {
+            self.loadCoverageForCurrentView(coverage);
+          }
+        });
+      }, this.reloadDelay);
+    },
+
+    isCoverageVisible: function(coverage) {
+      return !!(coverage.layer && coverage.layer.getVisible());
     },
 
     getBaseLayers: function() {
@@ -565,6 +621,22 @@ function preferredFormat(xml) {
 function normalizeCrs(crs) {
   var match = String(crs || '').match(/EPSG(?:::|\/0\/|:)(\d+)/i);
   return match ? 'EPSG:' + match[1] : crs;
+}
+
+function intersectBbox(a, b) {
+  if (!a || !b) {
+    return a || b || null;
+  }
+  var bbox = [
+    Math.max(a[0], b[0]),
+    Math.max(a[1], b[1]),
+    Math.min(a[2], b[2]),
+    Math.min(a[3], b[3])
+  ];
+  if (bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
+    return b;
+  }
+  return bbox;
 }
 
 function fitCoveragesBbox(map, coverages) {
