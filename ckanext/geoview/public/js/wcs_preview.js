@@ -395,14 +395,11 @@ ckan.module('wcspreview', function(jQuery, _) {
       if (initialLoad) {
         var map = this.map;
         layer.getSource().getView().then(function(viewOptions) {
-          map.setView(new ol.View(viewOptions));
+          var view = new ol.View(unconstrainedViewOptions(viewOptions));
+          map.setView(view);
+          fitCoverageBbox(map, coverage);
         }).catch(function() {
-          if (coverage.bbox) {
-            map.getView().fit(
-              ol.proj.transformExtent(coverage.bbox, OL_HELPERS.EPSG4326, map.getView().getProjection()),
-              {constrainResolution: false}
-            );
-          }
+          fitCoverageBbox(map, coverage);
         });
       }
     },
@@ -650,6 +647,48 @@ function intersectBbox(a, b) {
     return b;
   }
   return bbox;
+}
+
+function unconstrainedViewOptions(viewOptions) {
+  var options = $.extend({}, viewOptions || {});
+  delete options.extent;
+  delete options.resolutions;
+  delete options.minResolution;
+  delete options.maxResolution;
+  delete options.minZoom;
+  delete options.maxZoom;
+  options.constrainOnlyCenter = true;
+  options.smoothExtentConstraint = true;
+  return options;
+}
+
+function fitCoverageBbox(map, coverage) {
+  var view = map && map.getView && map.getView();
+  if (!view) {
+    return;
+  }
+
+  var envelope = coverage.envelope || {};
+  var bbox = envelope.bbox || coverage.bbox;
+  if (!bbox) {
+    return;
+  }
+
+  var sourceProjection = envelope.crs && ol.proj.get(normalizeCrs(envelope.crs));
+  var targetProjection = view.getProjection();
+  var extent = bbox;
+
+  if (sourceProjection && targetProjection && sourceProjection.getCode() !== targetProjection.getCode()) {
+    extent = ol.proj.transformExtent(bbox, sourceProjection, targetProjection);
+  } else if (!sourceProjection && targetProjection && targetProjection.getCode() !== OL_HELPERS.EPSG4326) {
+    extent = ol.proj.transformExtent(bbox, OL_HELPERS.EPSG4326, targetProjection);
+  }
+
+  view.fit(extent, {
+    size: map.getSize(),
+    constrainResolution: false,
+    nearest: false
+  });
 }
 
 function extractGeoTiffBlob(buffer, contentType) {
