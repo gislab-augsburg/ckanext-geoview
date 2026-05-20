@@ -116,6 +116,7 @@ wcs_js:
     - js/vendor/geotiff/geotiff.js
     - js/vendor/openlayers/ol.js
     - js/vendor/ol-helpers/ol-helpers.js
+    - js/vendor/ol-helpers/ol-layer-switcher.js
     - js/wcs_preview.js
 wcs_css:
   output: ckanext-geoview/%(version)s_wcs.css
