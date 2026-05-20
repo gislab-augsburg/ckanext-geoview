@@ -224,6 +224,9 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       if (coverage.layer) {
         coverage.layer.setVisible(true);
+        if (!coverage.directUrl) {
+          this.loadCoverageForCurrentView(coverage);
+        }
         return;
       }
 
