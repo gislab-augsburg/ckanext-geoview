@@ -2,7 +2,7 @@
 
 import json
 import logging
-from six.moves.urllib.parse import urlencode, urlsplit, parse_qs
+from six.moves.urllib.parse import urlencode, urlsplit, parse_qs, parse_qsl
 
 import requests
 import re
@@ -99,7 +99,7 @@ def proxy_service_url(req, url, max_file_size=MAX_FILE_SIZE):
             for key in dict(params):
                 if key.lower() in OGC_EXCLUDED_PARAMS:
                     del params[key]
-            parts = parts._replace(query=urlencode(params))
+            parts = parts._replace(query=urlencode(params, doseq=True))
 
         parts = parts._replace(fragment="")  # remove potential fragment
         url = parts.geturl()
@@ -109,7 +109,9 @@ def proxy_service_url(req, url, max_file_size=MAX_FILE_SIZE):
             body = req.body
             r = requests.post(url, data=body, headers=headers, stream=True)
         else:
-            r = requests.get(url, params=req.query_string, stream=True)
+            r = requests.get(
+                url, params=clean_query_string(req.query_string), stream=True
+            )
 
         # log.info('Request: {req}'.format(req=r.request.url))
         # log.info('Request Headers: {h}'.format(h=r.request.headers))
@@ -169,6 +171,23 @@ def proxy_service_url(req, url, max_file_size=MAX_FILE_SIZE):
         details = "Could not proxy resource because the connection timed out."
         toolkit.abort(504, detail=details)
     return response
+
+
+def clean_query_string(query_string):
+    if not query_string:
+        return ""
+
+    if isinstance(query_string, bytes):
+        query_string = query_string.decode("utf-8")
+
+    return urlencode(
+        [
+            (key, value)
+            for key, value in parse_qsl(query_string, keep_blank_values=True)
+            if key
+        ],
+        doseq=True,
+    )
 
 
 def get_common_map_config():

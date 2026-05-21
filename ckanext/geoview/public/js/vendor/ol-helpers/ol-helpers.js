@@ -876,7 +876,11 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         var kvps = (kvpString && kvpString.split("&")) || []
         var kvpMap = {}
         kvps.forEach(function(val, idx) {
+            if (!val)
+                return;
             var kv = val.split('=')
+            if (!kv[0])
+                return;
             kvpMap[kv[0].toLowerCase()] = kv[1]
         })
 
@@ -1209,7 +1213,8 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         delete urlParts.query['outputformat']
         delete urlParts.query['typename']
 
-        return urlParts.path + '?' + OL_HELPERS.kvp2string(urlParts.query)
+        var queryString = OL_HELPERS.kvp2string(urlParts.query)
+        return urlParts.path + (queryString ? '?' + queryString : '')
 
     }
 
@@ -3399,5 +3404,4 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
       }
 
 }) ();
-
 
