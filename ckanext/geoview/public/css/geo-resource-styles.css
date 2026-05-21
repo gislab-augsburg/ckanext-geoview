@@ -71,10 +71,24 @@
     background-color: #3333ff;
 }
 
+.badge[data-format=wcs] {
+    background-color: #008c95;
+}
+
 .format-label[data-format=wmts],
 .format-label[data-format*=wmts] {
     background: url("../../img/gis-resources-sprite-icons.png") no-repeat 0 0;
     background-position: -162px -62px;
+    transform: none;
+    margin: 0;
+    width: 32px;
+    height: 35px;
+}
+
+.format-label[data-format=wcs],
+.format-label[data-format*=wcs] {
+    background: url("../../img/gis-resources-sprite-icons.png") no-repeat 0 0;
+    background-position: -226px -62px;
     transform: none;
     margin: 0;
     width: 32px;
