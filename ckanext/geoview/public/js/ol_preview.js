@@ -120,6 +120,8 @@
 
             _commonBaseLayer: function(mapConfig, callback, module) {
 
+                mapConfig = this.normalizeBaseMapConfig(mapConfig)
+
                 if (mapConfig.type == 'mapbox') {
                     // MapBox base map
                     if (!mapConfig['map_id'] || !mapConfig['access_token']) {
@@ -134,14 +136,19 @@
                     ];
                     mapConfig.attribution = '<a href="https://www.mapbox.com/about/maps/" target="_blank">&copy; Mapbox &copy; OpenStreetMap </a> <a href="https://www.mapbox.com/map-feedback/" target="_blank">Improve this map</a>';
 
-                } else if (mapConfig.type == 'custom') {
-                    mapConfig.type = 'XYZ'
-                } else {
-
-                    mapConfig.type = 'OSM'
                 }
 
                 return OL_HELPERS.createLayerFromConfig(mapConfig, true).then(callback);
+            },
+
+            normalizeBaseMapConfig: function(mapConfig) {
+                mapConfig = $.extend({}, mapConfig || {})
+                if (mapConfig.type == 'custom') {
+                    mapConfig.type = 'XYZ'
+                } else if (!mapConfig.type) {
+                    mapConfig.type = 'OSM'
+                }
+                return mapConfig
             },
 
             createMapFun: function (baseMapLayerList, overlays) {
@@ -333,13 +340,14 @@
                             // add other basemaps if any
                             for (var idx=1;idx<baseMapsConfig.length;idx++) {
                                 OL_HELPERS.createLayerFromConfig(
-                                    baseMapsConfig[idx],
-                                    true,
-                                    function(layer) {
+                                    $this.normalizeBaseMapConfig(baseMapsConfig[idx]),
+                                    true).then(function(layerList) {
+                                    layerList.forEach(function(layer) {
                                         layer.setVisible(false)
                                         // insert all basemaps at the bottom
                                         $this.map.getLayers().insertAt(0, layer)
                                     });
+                                });
                             }
                         }
                     },
