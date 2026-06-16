@@ -455,7 +455,7 @@ ckan.module('wcspreview', function(jQuery, _) {
       return this.createBaseLayer(baseMapsConfig[0]).then(function(firstLayerList) {
         var layers = firstLayerList.slice();
         var remaining = baseMapsConfig.slice(1).map(function(config) {
-          return OL_HELPERS.createLayerFromConfig(config, true).then(function(layerList) {
+          return self.createBaseLayer(config).then(function(layerList) {
             layerList.forEach(function(layer) {
               layer.setVisible(false);
               layers.push(layer);
