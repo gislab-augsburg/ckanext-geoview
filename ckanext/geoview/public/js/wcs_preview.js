@@ -485,7 +485,7 @@ ckan.module('wcspreview', function(jQuery, _) {
         mapConfig.attribution = '<a href="https://www.mapbox.com/about/maps/" target="_blank">&copy; Mapbox &copy; OpenStreetMap </a>';
       } else if (mapConfig.type === 'custom') {
         mapConfig.type = 'XYZ';
-      } else {
+      } else if (!mapConfig.type) {
         mapConfig.type = 'OSM';
       }
 
