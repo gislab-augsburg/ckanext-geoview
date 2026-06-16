@@ -3012,7 +3012,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 if (useTiling) {
                     baseMapLayer = new ol.layer.Tile({
                         type: isBaseLayer ? 'base' : undefined,
-                        title: mapConfig['layer'],
+                        title: mapConfig['title'] || mapConfig['layer'],
                         visible: true,
                         extent: mapConfig['extent'] && eval(mapConfig['extent']), /* TODO_OL4 this correct to set maxExtent ? */
                         source: new ol.source.TileWMS({
@@ -3026,7 +3026,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 } else {
                     baseMapLayer = new ol.layer.Image({
                         type: isBaseLayer ? 'base' : undefined,
-                        title: mapConfig['layer'],
+                        title: mapConfig['title'] || mapConfig['layer'],
                         visible: true,
                         extent: mapConfig['extent'] && eval(mapConfig['extent']), /* TODO_OL4 this correct to set maxExtent ? */
                         source: new ol.source.ImageWMS({
@@ -3404,4 +3404,3 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
       }
 
 }) ();
-
