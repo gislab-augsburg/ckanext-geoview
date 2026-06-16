@@ -125,10 +125,11 @@ class HilatsLayerSwitcher extends ol.control.Control {
 
         //switch projection
         var newProjection = baselayer.getSource() && baselayer.getSource().getProjection();
-        if (newProjection) {
-            var currentView = this.getMap().getView();
+        var currentView = this.getMap().getView();
+        var currentProjection = currentView && currentView.getProjection();
+        if (newProjection && currentProjection && newProjection.getCode() !== currentProjection.getCode()) {
             var currentExtent = currentView.calculateExtent();
-            var newExtent = ol.proj.transformExtent(currentExtent, currentView.getProjection(), newProjection);
+            var newExtent = ol.proj.transformExtent(currentExtent, currentProjection, newProjection);
             var newView = new ol.View({
                 projection: newProjection
             })

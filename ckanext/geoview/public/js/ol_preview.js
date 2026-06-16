@@ -222,20 +222,23 @@
                     });
                 });
 
-                // force a reload of all vector sources on projection change
-                map.getView().on('change:projection', function() {
+                // force a reload of all vector sources only on real projection changes
+                var reloadVectorSources = function() {
                     map.getLayers().forEach(function(layer) {
                         if (layer instanceof ol.layer.Vector) {
-                            layer.getSource().clear();
+                            var source = layer.getSource();
+                            source.clear();
+                            if (source.refresh) source.refresh();
                         }
                     });
-                });
+                };
+                var currentProjection = map.getView().getProjection();
                 map.on('change:view', function() {
-                    map.getLayers().forEach(function(layer) {
-                        if (layer instanceof ol.layer.Vector) {
-                            layer.getSource().clear();
-                        }
-                    });
+                    var newProjection = map.getView().getProjection();
+                    if (!currentProjection || !newProjection || currentProjection.getCode() !== newProjection.getCode()) {
+                        reloadVectorSources();
+                    }
+                    currentProjection = newProjection;
                 });
 
 
