@@ -436,6 +436,7 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       var mapConfig = $.extend({}, this.options.map_config || {});
       var baseMapsConfig = this.options.basemapsConfig;
+      var self = this;
 
       if (!baseMapsConfig) {
         var config = {
