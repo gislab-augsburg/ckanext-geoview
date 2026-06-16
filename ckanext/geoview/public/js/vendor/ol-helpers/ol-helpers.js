@@ -2384,7 +2384,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         return deferredResult
     }
 
-    OL_HELPERS.withArcGisImageLayers = function (url, layerProcessor, layerNames, map, proxyServiceUrl) {
+    OL_HELPERS.withArcGisImageLayers = function (url, layerProcessor, layerNames, map, proxyServiceUrl, options) {
 
         var deferredResult = $.Deferred();
         var deferredLayers = [];
@@ -2412,7 +2412,9 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
 
                     var rawExportUrl = url + '/export';
 
-                    var source = new ol.source.ImageArcGISRest({
+                    options = options || {};
+
+                    var sourceOptions = {
                         url: rawExportUrl,
                         ratio: 1,
                         crossOrigin: 'anonymous',
@@ -2428,7 +2430,13 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                             ////
                             image.getImage().src = src;
                         }
-                    });
+                    };
+
+                    if (options.projection) {
+                        sourceOptions.projection = options.projection;
+                    }
+
+                    var source = new ol.source.ImageArcGISRest(sourceOptions);
 
                     var newLayer = new ol.layer.Image({
                         title: title,
@@ -3030,6 +3038,37 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     })
                 }
                 deferredResult.resolve([baseMapLayer]);
+
+            } else if (mapConfig.type == 'arcgis_rest_img') {
+                urls = mapConfig['url'];
+                if (!urls)
+                    throw 'ArcGIS REST Image URL must be set when using arcgis_rest_img Map type';
+
+                var layerCallback = function(layer, title_suffix) {
+                    layer.set('type', isBaseLayer ? 'base' : undefined);
+                    mapConfig['title'] && layer.set('title', mapConfig['title'] + (title_suffix ? (' ' + title_suffix) : ''));
+                };
+
+                return OL_HELPERS.withArcGisImageLayers(
+                    urls,
+                    undefined,
+                    mapConfig['layer'],
+                    undefined,
+                    undefined,
+                    {
+                        projection: mapConfig['srs'] ? ol.proj.get(mapConfig['srs']) : undefined
+                    }
+                ).then(function(layers) {
+                    if (layers.length <= 1)
+                        layers.forEach(layerCallback);
+                    else {
+                        layers.forEach(function(layer) {
+                            layerCallback(layer, layer.get('title'));
+                        });
+                    }
+
+                    return layers;
+                });
 
             } else {
                 throw "Unknown basemap type: " + mapConfig.type;
