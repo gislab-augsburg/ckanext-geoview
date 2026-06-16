@@ -222,13 +222,17 @@
                     });
                 });
 
-                // force a reload of all vector sources only on real projection changes
-                var reloadVectorSources = function() {
+                // force a reload of resource sources that depend on the view projection
+                var reloadProjectionSensitiveSources = function() {
                     map.getLayers().forEach(function(layer) {
+                        var source = layer.getSource && layer.getSource();
+                        if (!source) return;
+
                         if (layer instanceof ol.layer.Vector) {
-                            var source = layer.getSource();
                             source.clear();
                             if (source.refresh) source.refresh();
+                        } else if (source instanceof ol.source.ImageArcGISRest && source.refresh) {
+                            source.refresh();
                         }
                     });
                 };
@@ -236,7 +240,7 @@
                 map.on('change:view', function() {
                     var newProjection = map.getView().getProjection();
                     if (!currentProjection || !newProjection || currentProjection.getCode() !== newProjection.getCode()) {
-                        reloadVectorSources();
+                        reloadProjectionSensitiveSources();
                     }
                     currentProjection = newProjection;
                 });

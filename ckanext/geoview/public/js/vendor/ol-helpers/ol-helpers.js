@@ -2436,29 +2436,19 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         source: source
                     });
 
-                    if (serviceExtent && map && map.getView()) {
-                        var mapProjection = map.getView().getProjection().getCode();
-
-                        var bounds = OL_HELPERS.parseArcgisExtent(
+                    if (serviceExtent) {
+                        var wgs84Bounds = OL_HELPERS.parseArcgisExtent(
                             serviceExtent,
-                            mapProjection
+                            OL_HELPERS.EPSG4326.getCode()
                         );
 
-                        if (bounds) {
+                        if (wgs84Bounds) {
                             source.set('arcgisDescr', {
-                                bounds: bounds
+                                bounds: wgs84Bounds
                             });
                             source.getFullExtent = function() {
-                                return bounds;
+                                return wgs84Bounds;
                             };
-                            newLayer.set('extent', bounds);
-                            if (visible) {
-                                map.getView().fit(bounds, {
-                                    size: map.getSize(),
-                                    padding: [20, 20, 20, 20],
-                                    maxZoom: 18
-                                });
-                            }
                         }
                     }
 
