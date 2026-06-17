@@ -2043,12 +2043,31 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
             capaUrl,
             function (capas) {
 
-                // make sure TileMatrix ids are not prefixed with TileMatrixSet ids
+                // Some capabilities prefix TileMatrixSetLimits but not TileMatrix ids.
+                // Only strip that prefix when the stripped id actually exists.
                 capas.Contents.Layer.forEach(function(l) {
                     l.TileMatrixSetLink.forEach(function(tmslk) {
+                        var tileMatrixSet = capas.Contents.TileMatrixSet.find(function(tms) {
+                            return tms.Identifier == tmslk.TileMatrixSet;
+                        });
+                        var tileMatrixIds = tileMatrixSet && tileMatrixSet.TileMatrix &&
+                            tileMatrixSet.TileMatrix.map(function(tileMatrix) {
+                                return tileMatrix.Identifier;
+                            });
+
                         tmslk.TileMatrixSetLimits && tmslk.TileMatrixSetLimits.forEach(function(tmslmts) {
-                            if (tmslmts.TileMatrix.startsWith(tmslk.TileMatrixSet+':')) {
-                                tmslmts.TileMatrix = tmslmts.TileMatrix.substring(tmslk.TileMatrixSet.length+1);
+                            if (!tileMatrixIds) {
+                                return;
+                            }
+
+                            var originalTileMatrix = tmslmts.TileMatrix;
+                            var strippedTileMatrix = originalTileMatrix && originalTileMatrix.startsWith(tmslk.TileMatrixSet+':') &&
+                                originalTileMatrix.substring(tmslk.TileMatrixSet.length+1);
+
+                            if (strippedTileMatrix &&
+                                tileMatrixIds.indexOf(originalTileMatrix) < 0 &&
+                                tileMatrixIds.indexOf(strippedTileMatrix) >= 0) {
+                                tmslmts.TileMatrix = strippedTileMatrix;
                             }
                         })
                     })
