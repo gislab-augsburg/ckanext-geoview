@@ -13,6 +13,9 @@ class HilatsLayerSwitcher extends ol.control.Control {
             target: options.target
         });
 
+        this.baseLayerLabel = options.baseLayerLabel || 'Base Map';
+        this.layersLabel = options.layersLabel || 'Layers';
+
         var _this = this;
         this.mapListeners = [];
         this.parentElement = parentElement.hover(
@@ -28,9 +31,10 @@ class HilatsLayerSwitcher extends ol.control.Control {
         );
 
 
-        this.header = $("<div class='header'></div>");
-        var layerList = $("<div class='ol-unselectable ol-control layer-list'><div class='padder'></div></div>");
+        var layerList = $("<div class='ol-unselectable ol-control layer-list'></div>");
         this.layerList = layerList[0];
+        this.header = $("<div class='switcher-section base-map-section'></div>").appendTo(layerList)[0];
+        this.layersTitle = $("<div class='switcher-section-title layers-title'></div>").appendTo(layerList)[0];
 
         var progressIndicator =  $("<div class='stacked-layers'>" +
                                    "<div class='stacked-layer layer-1'></div>" +
@@ -38,7 +42,6 @@ class HilatsLayerSwitcher extends ol.control.Control {
                                    "<div class='stacked-layer layer-3'></div></div>");
         this.parentElement
             .append(progressIndicator)
-            .append(this.header)
             .append(layerList);
 
         this.panel = $("<div class='panel'></div>").appendTo(layerList)[0];
@@ -74,14 +77,15 @@ class HilatsLayerSwitcher extends ol.control.Control {
         this.ensureTopVisibleBaseLayerShown_();
 
         $(this.header).empty()
+            .append($("<div class='switcher-section-title'></div>").text(this.baseLayerLabel))
             .append(this.renderBaseLayerSelector());
+        $(this.layersTitle).text(this.layersLabel);
 
         this.renderLayersList(this.getMap().getLayers().getArray().slice().reverse())
             .appendTo($(this.panel).empty())
 
         this.syncBaseLayerSelector_();
         this.resizeLayerList_();
-        $(this.header).find("select").width($(this.panel).width() - 40)
 
     };
 
@@ -218,9 +222,9 @@ class HilatsLayerSwitcher extends ol.control.Control {
         var mapHeight = mapElement ? $(mapElement).height() : $(this.element).closest('.ol-viewport').height();
         var listTop = parseInt($(this.layerList).css('top'), 10) || 5;
         var listBottom = parseInt($(this.layerList).css('bottom'), 10) || 5;
-        var padderHeight = $(this.layerList).find('.padder').outerHeight() || 36;
+        var fixedHeight = $(this.header).outerHeight(true) + $(this.layersTitle).outerHeight(true);
         var maxListHeight = mapHeight ? Math.max(80, mapHeight - listTop - listBottom) : 300;
-        var maxPanelHeight = Math.max(60, maxListHeight - padderHeight);
+        var maxPanelHeight = Math.max(60, maxListHeight - fixedHeight);
 
         $(this.layerList).css({
             'max-height': maxListHeight + 'px',

@@ -151,9 +151,17 @@
                 return mapConfig
             },
 
+            layerSwitcherLabel: function() {
+                var format = preload_resource && preload_resource.format &&
+                    preload_resource.format.toLocaleLowerCase();
+                return format == 'wfs' ? 'FeatureTypes' : 'Layers';
+            },
+
             createMapFun: function (baseMapLayerList, overlays) {
 
-                var layerSwitcher = new ol.control.HilatsLayerSwitcher();
+                var layerSwitcher = new ol.control.HilatsLayerSwitcher({
+                    layersLabel: this.layerSwitcherLabel()
+                });
 
                 var styleMapJson = OL_HELPERS.DEFAULT_STYLEMAP;
 

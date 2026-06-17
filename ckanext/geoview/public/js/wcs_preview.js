@@ -36,7 +36,9 @@ ckan.module('wcspreview', function(jQuery, _) {
       var self = this;
       this.getBaseLayers().then(function(baseLayers) {
         var baseMapLayer = baseLayers[0];
-        self.layerSwitcher = new ol.control.HilatsLayerSwitcher();
+        self.layerSwitcher = new ol.control.HilatsLayerSwitcher({
+          layersLabel: 'Coverages'
+        });
         self.map = new OL_HELPERS.LoggingMap({
           target: 'map',
           layers: baseLayers,
