@@ -254,19 +254,26 @@ class WMTSView(GeoViewBase):
         return False
 
     def view_template(self, context, data_dict):
-        return "dataviewer/wmts.html"
+        return "dataviewer/wmts_ol.html"
 
     def setup_template_variables(self, context, data_dict):
         import ckanext.resourceproxy.plugin as proxy
 
-        self.same_domain = data_dict["resource"].get("on_same_domain")
-        if self.proxy_enabled and not self.same_domain:
-            data_dict["resource"]["original_url"] = data_dict["resource"].get(
-                "url"
-            )
-            data_dict["resource"]["url"] = proxy.get_proxified_resource_url(
-                data_dict
-            )
+        same_domain = on_same_domain(data_dict)
+        data_dict["resource"]["original_url"] = data_dict["resource"].get("url")
+
+        if self.proxy_enabled and not same_domain:
+            proxy_url = proxy.get_proxified_resource_url(data_dict)
+            proxy_service_url = utils.get_proxified_service_url(data_dict)
+        else:
+            proxy_url = data_dict["resource"]["url"]
+            proxy_service_url = utils.normalize_service_url(data_dict["resource"])
+
+        return {
+            "proxy_service_url": proxy_service_url,
+            "proxy_url": proxy_url,
+            "basemapsConfig": self.basemapsConfig,
+        }
 
     # ITemplateHelpers
 

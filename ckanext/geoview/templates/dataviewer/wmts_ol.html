@@ -1,0 +1,25 @@
+{% extends "dataviewer/base.html" %}
+
+{% block page %}
+
+    {% set map_config = h.get_common_map_config_wmts() %}
+    <div id="data-preview">
+        <div id="map-container"
+             data-module="wmtsolpreview"
+             data-module-proxy_url="{{ proxy_url }}"
+             data-module-proxy_service_url="{{ proxy_service_url }}"
+             data-module-map_config="{{ h.dump_json(map_config) }}"
+             {% if basemapsConfig %} data-module-basemaps-config = "{{ h.dump_json(basemapsConfig) }}" {% endif %}
+             >
+            <h4 class="loading-dialog">
+              <div class="loading-spinner"></div>
+              <div class="left">{{ _('Loading...') }}</div>
+            </h4>
+        </div>
+        <div class="layerswitcher olControlLayerSwitcher"></div>
+    </div>
+
+    {% asset 'ckanext-geoview/wmts_ol_js' %}
+    {% asset 'ckanext-geoview/wmts_ol_css' %}
+
+{% endblock %}
