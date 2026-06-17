@@ -30,6 +30,7 @@ class HilatsLayerSwitcher extends ol.control.Control {
 
         this.header = $("<div class='header'></div>");
         var layerList = $("<div class='ol-unselectable ol-control layer-list'><div class='padder'></div></div>");
+        this.layerList = layerList[0];
 
         var progressIndicator =  $("<div class='stacked-layers'>" +
                                    "<div class='stacked-layer layer-1'></div>" +
@@ -79,6 +80,7 @@ class HilatsLayerSwitcher extends ol.control.Control {
             .appendTo($(this.panel).empty())
 
         this.syncBaseLayerSelector_();
+        this.resizeLayerList_();
         $(this.header).find("select").width($(this.panel).width() - 40)
 
     };
@@ -204,6 +206,31 @@ class HilatsLayerSwitcher extends ol.control.Control {
         if (visibleBaseLyr) {
             $(this.header).find(".baseLayerSelector select").val(visibleBaseLyr.get('title'));
         }
+    };
+
+    /**
+     * Keep long layer lists inside the current map viewport.
+     * @private
+     */
+    resizeLayerList_() {
+        var map = this.getMap();
+        var mapElement = map && map.getTargetElement && map.getTargetElement();
+        var mapHeight = mapElement ? $(mapElement).height() : $(this.element).closest('.ol-viewport').height();
+        var listTop = parseInt($(this.layerList).css('top'), 10) || 5;
+        var listBottom = parseInt($(this.layerList).css('bottom'), 10) || 5;
+        var padderHeight = $(this.layerList).find('.padder').outerHeight() || 36;
+        var maxListHeight = mapHeight ? Math.max(80, mapHeight - listTop - listBottom) : 300;
+        var maxPanelHeight = Math.max(60, maxListHeight - padderHeight);
+
+        $(this.layerList).css({
+            'max-height': maxListHeight + 'px',
+            'overflow': 'hidden'
+        });
+        $(this.panel).css({
+            'max-height': maxPanelHeight + 'px',
+            'overflow-x': 'hidden',
+            'overflow-y': 'auto'
+        });
     };
 
     /**
