@@ -102,10 +102,11 @@
   display: none;
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: calc(100% - 10px);
+  max-height: none;
   min-width: 150px;
   left: 7px;
   top: 5px;
+  bottom: 5px;
   z-index: 80;
   background-color: black;
 }

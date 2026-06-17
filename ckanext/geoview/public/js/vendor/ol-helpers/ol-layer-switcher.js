@@ -78,6 +78,7 @@ class HilatsLayerSwitcher extends ol.control.Control {
         this.renderLayersList(this.getMap().getLayers().getArray().slice().reverse())
             .appendTo($(this.panel).empty())
 
+        this.syncBaseLayerSelector_();
         $(this.header).find("select").width($(this.panel).width() - 40)
 
     };
@@ -122,9 +123,6 @@ class HilatsLayerSwitcher extends ol.control.Control {
             return aOrder - bOrder;
         }));
 
-        if (baselayer.getVisible())
-            $select.val(baselayer.get('title'));
-
     };
 
     switchBaseLayer(baselayer) {
@@ -154,7 +152,8 @@ class HilatsLayerSwitcher extends ol.control.Control {
 
 
         // display base layer
-        baselayer.setVisible(true);
+        this.setVisible_(baselayer, true);
+        this.syncBaseLayerSelector_();
 
     };
 
@@ -163,13 +162,48 @@ class HilatsLayerSwitcher extends ol.control.Control {
      * @private
      */
     ensureTopVisibleBaseLayerShown_() {
-        var lastVisibleBaseLyr;
+        var visibleBaseLyr = this.getVisibleBaseLayer_();
+        if (visibleBaseLyr) this.setVisible_(visibleBaseLyr, true);
+    };
+
+    /**
+     * Return the configured order for a base layer.
+     * @private
+     */
+    getBaseLayerOrder_(lyr) {
+        var order = lyr && lyr.get('baseLayerOrder');
+        return order === undefined ? 999999 : order;
+    };
+
+    /**
+     * Return the visible base layer that should be represented in the selector.
+     * @private
+     */
+    getVisibleBaseLayer_() {
+        var _this = this;
+        var visibleBaseLyr;
+        var visibleBaseOrder;
         forEachRecursive(this.getMap(), function(l, idx, a) {
             if (l.get('type') === 'base' && l.getVisible()) {
-                lastVisibleBaseLyr = l;
+                var order = _this.getBaseLayerOrder_(l);
+                if (!visibleBaseLyr || order < visibleBaseOrder) {
+                    visibleBaseLyr = l;
+                    visibleBaseOrder = order;
+                }
             }
         });
-        if (lastVisibleBaseLyr) this.setVisible_(lastVisibleBaseLyr, true);
+        return visibleBaseLyr;
+    };
+
+    /**
+     * Keep the base layer selector in sync after rendering or switching layers.
+     * @private
+     */
+    syncBaseLayerSelector_() {
+        var visibleBaseLyr = this.getVisibleBaseLayer_();
+        if (visibleBaseLyr) {
+            $(this.header).find(".baseLayerSelector select").val(visibleBaseLyr.get('title'));
+        }
     };
 
     /**
