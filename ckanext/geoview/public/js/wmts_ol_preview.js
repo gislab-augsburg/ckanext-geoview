@@ -96,8 +96,13 @@
             },
 
             createBaseLayers: function(configs) {
-                var promises = configs.map(function(config) {
-                    return OL_HELPERS.createLayerFromConfig(config, true);
+                var promises = configs.map(function(config, configIndex) {
+                    return OL_HELPERS.createLayerFromConfig(config, true).then(function(layerList) {
+                        layerList.forEach(function(layer) {
+                            layer.set('baseLayerOrder', configIndex);
+                        });
+                        return layerList;
+                    });
                 });
 
                 return $.when.apply($, promises).then(function() {

@@ -110,6 +110,18 @@ class HilatsLayerSwitcher extends ol.control.Control {
                 .text(baselayer.get('title'))
         )
 
+        $select.append($select.find("option").sort(function(a, b) {
+            var aLayer = $(a).prop("layer");
+            var bLayer = $(b).prop("layer");
+            var aOrder = aLayer && aLayer.get('baseLayerOrder');
+            var bOrder = bLayer && bLayer.get('baseLayerOrder');
+
+            if (aOrder === undefined && bOrder === undefined) return 0;
+            if (aOrder === undefined) return 1;
+            if (bOrder === undefined) return -1;
+            return aOrder - bOrder;
+        }));
+
         if (baselayer.getVisible())
             $select.val(baselayer.get('title'));
 

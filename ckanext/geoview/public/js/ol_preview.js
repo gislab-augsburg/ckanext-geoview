@@ -339,23 +339,37 @@
                 this._commonBaseLayer(
                     baseMapsConfig[0],
                     function(layer) {
+                        layer.forEach(function(baseLayer) {
+                            baseLayer.set('baseLayerOrder', 0);
+                        });
                         baseMapsConfig[0].$ol_layer = layer;
                         $this.createMapFun(layer, overlays);
 
                         // add all configured basemap layers
                         if (baseMapsConfig.length > 1) {
-                            // add other basemaps if any
+                            var layerPromises = [];
                             for (var idx=1;idx<baseMapsConfig.length;idx++) {
-                                OL_HELPERS.createLayerFromConfig(
-                                    $this.normalizeBaseMapConfig(baseMapsConfig[idx]),
-                                    true).then(function(layerList) {
-                                    layerList.forEach(function(layer) {
-                                        layer.setVisible(false)
-                                        // insert all basemaps at the bottom
-                                        $this.map.getLayers().insertAt(0, layer)
-                                    });
-                                });
+                                (function(baseMapIndex) {
+                                    layerPromises.push(OL_HELPERS.createLayerFromConfig(
+                                        $this.normalizeBaseMapConfig(baseMapsConfig[baseMapIndex]),
+                                        true).then(function(layerList) {
+                                        layerList.forEach(function(layer) {
+                                            layer.set('baseLayerOrder', baseMapIndex);
+                                        });
+                                        return layerList;
+                                    }));
+                                })(idx);
                             }
+
+                            $.when.apply($, layerPromises).then(function() {
+                                for (var argIdx = 0; argIdx < arguments.length; argIdx++) {
+                                    arguments[argIdx].forEach(function(layer) {
+                                            layer.setVisible(false);
+                                            // insert all basemaps at the bottom
+                                            $this.map.getLayers().insertAt(0, layer);
+                                    });
+                                }
+                            });
                         }
                     },
                     this);

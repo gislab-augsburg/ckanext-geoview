@@ -455,9 +455,14 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       return this.createBaseLayer(baseMapsConfig[0]).then(function(firstLayerList) {
         var layers = firstLayerList.slice();
+        layers.forEach(function(layer) {
+          layer.set('baseLayerOrder', 0);
+        });
         var remaining = baseMapsConfig.slice(1).map(function(config) {
+          var baseMapIndex = baseMapsConfig.indexOf(config);
           return self.createBaseLayer(config).then(function(layerList) {
             layerList.forEach(function(layer) {
+              layer.set('baseLayerOrder', baseMapIndex);
               layer.setVisible(false);
               layers.push(layer);
             });
