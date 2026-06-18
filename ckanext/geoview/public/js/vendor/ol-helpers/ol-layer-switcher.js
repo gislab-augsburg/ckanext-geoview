@@ -228,8 +228,8 @@ class HilatsLayerSwitcher extends ol.control.Control {
         var leftMargin = 7;
         var fixedHeight = $(this.header).outerHeight(true) + $(this.layersTitle).outerHeight(true);
         var maxListHeight = mapHeight ? Math.max(80, mapHeight - listTop - listBottom) : 300;
-        var maxPanelHeight = Math.max(60, maxListHeight - fixedHeight);
-        var preferredWidth = 360;
+        var maxPanelHeight = Math.max(60, maxListHeight - fixedHeight - 50);
+        var preferredWidth = 260;
         var maxListWidth = mapWidth ? Math.max(80, mapWidth - listRight - leftMargin) : preferredWidth;
         var listWidth = Math.min(preferredWidth, maxListWidth);
 
