@@ -221,9 +221,10 @@ class HilatsLayerSwitcher extends ol.control.Control {
         var mapElement = map && map.getTargetElement && map.getTargetElement();
         var mapHeight = mapElement ? $(mapElement).height() : $(this.element).closest('.ol-viewport').height();
         var mapWidth = mapElement ? $(mapElement).width() : $(this.element).closest('.ol-viewport').width();
+        var iconRight = 7;
+        var listRight = 66;
         var listTop = parseInt($(this.layerList).css('top'), 10) || 5;
         var listBottom = parseInt($(this.layerList).css('bottom'), 10) || 5;
-        var listRight = parseInt($(this.layerList).css('right'), 10) || 56;
         var leftMargin = 7;
         var fixedHeight = $(this.header).outerHeight(true) + $(this.layersTitle).outerHeight(true);
         var maxListHeight = mapHeight ? Math.max(80, mapHeight - listTop - listBottom) : 300;
@@ -232,9 +233,15 @@ class HilatsLayerSwitcher extends ol.control.Control {
         var maxListWidth = mapWidth ? Math.max(80, mapWidth - listRight - leftMargin) : preferredWidth;
         var listWidth = Math.min(preferredWidth, maxListWidth);
 
+        $(this.element).find('.stacked-layers').css({
+            'right': iconRight + 'px'
+        });
         $(this.layerList).css({
+            'right': listRight + 'px',
             'width': listWidth + 'px',
             'max-height': maxListHeight + 'px',
+            'box-sizing': 'border-box',
+            'padding': '13px 15px 12px 15px',
             'overflow': 'hidden'
         });
         $(this.panel).css({
