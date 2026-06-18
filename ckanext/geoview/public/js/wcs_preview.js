@@ -167,12 +167,18 @@ ckan.module('wcspreview', function(jQuery, _) {
       var list = summaries.length ? summaries : localElements(capabilities, 'CoverageOfferingBrief');
 
       list.each(function(i, node) {
-        var id = firstLocalText(node, ['CoverageId', 'Identifier', 'name']);
-        if (!id || (requestedCoverageId && id !== requestedCoverageId)) {
+        var coverageId = firstLocalText(node, ['CoverageId']);
+        var identifier = firstLocalText(node, ['Identifier']);
+        var name = firstLocalText(node, ['name']);
+        var id = coverageId || identifier || name;
+        if (!id || (requestedCoverageId && !matchesCoverageId(requestedCoverageId, coverageId, identifier, name))) {
           return;
         }
         coverages.push({
           id: id,
+          coverageId: coverageId,
+          identifier: identifier,
+          name: name,
           title: firstLocalText(node, ['Title', 'label']) || id,
           bbox: readWgs84Bbox(node),
           opacity: defaultOpacity,
@@ -310,7 +316,7 @@ ckan.module('wcspreview', function(jQuery, _) {
           params.HEIGHT = size[1];
         }
       } else {
-        params.IDENTIFIERS = coverage.id;
+        params.IDENTIFIER = coverage.id;
         if (bbox) {
           params.BOUNDINGBOX = bbox.join(',') + (envelope.crs ? ',' + normalizeCrs(envelope.crs) : '');
         }
@@ -544,6 +550,12 @@ function firstLocalText(root, names) {
     }
   }
   return '';
+}
+
+function matchesCoverageId(requestedCoverageId, coverageId, identifier, name) {
+  return requestedCoverageId === coverageId ||
+    requestedCoverageId === identifier ||
+    requestedCoverageId === name;
 }
 
 function getWcsVersion(capabilities) {
