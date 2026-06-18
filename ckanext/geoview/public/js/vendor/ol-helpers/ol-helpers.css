@@ -77,7 +77,7 @@
 }
 .ol-viewport .layer-switcher .stacked-layers {
   position: absolute;
-  right: 10px;
+  right: 7px;
   top: 5px;
   z-index: 100;
 }
@@ -103,10 +103,10 @@
   overflow-x: hidden;
   overflow-y: hidden;
   max-height: none;
-  width: calc(100% - 14px);
-  max-width: 390px;
+  width: 360px;
+  max-width: none;
   min-width: 0;
-  right: 7px;
+  right: 56px;
   top: 5px;
   bottom: 5px;
   z-index: 80;
@@ -116,7 +116,7 @@
   box-shadow: 0 2px 7px rgba(0, 0, 0, 0.35);
   box-sizing: border-box;
   color: white;
-  padding: 12px 52px 12px 14px;
+  padding: 13px 15px 12px 15px;
 }
 .ol-viewport .layer-switcher .layer-list .layer .title {
   margin-left: 5px;
