@@ -223,7 +223,7 @@ class HilatsLayerSwitcher extends ol.control.Control {
         var mapWidth = mapElement ? $(mapElement).width() : $(this.element).closest('.ol-viewport').width();
         var iconRight = 7;
         var listRight = 66;
-        var listTop = parseInt($(this.layerList).css('top'), 10) || 5;
+        var listTop = parseInt($(this.layerList).css('top') + 5, 15) || 5;
         var listBottom = parseInt($(this.layerList).css('bottom'), 10) || 5;
         var leftMargin = 7;
         var fixedHeight = $(this.header).outerHeight(true) + $(this.layersTitle).outerHeight(true);
