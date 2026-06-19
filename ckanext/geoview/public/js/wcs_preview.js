@@ -91,8 +91,7 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       this.fetchXml(withParams(serviceUrl, {
         SERVICE: 'WCS',
-        REQUEST: 'GetCapabilities',
-        VERSION: '2.0.1'
+        REQUEST: 'GetCapabilities'
       })).then(function(capabilities) {
         self.capabilities = capabilities;
         self.version = getWcsVersion(capabilities);
@@ -206,7 +205,7 @@ ckan.module('wcspreview', function(jQuery, _) {
         REQUEST: 'DescribeCoverage',
         VERSION: version
       };
-      params[version.indexOf('2.') === 0 ? 'COVERAGEID' : 'IDENTIFIERS'] = coverage.id;
+      params[coverageIdParam(version)] = coverage.id;
 
       coverage.describePromise = this.fetchXml(withParams(this.serviceUrl, params)).then(function(description) {
         coverage.description = description;
@@ -556,6 +555,16 @@ function matchesCoverageId(requestedCoverageId, coverageId, identifier, name) {
   return requestedCoverageId === coverageId ||
     requestedCoverageId === identifier ||
     requestedCoverageId === name;
+}
+
+function coverageIdParam(version) {
+  if (version.indexOf('2.') === 0) {
+    return 'COVERAGEID';
+  }
+  if (version.indexOf('1.0') === 0) {
+    return 'COVERAGE';
+  }
+  return 'IDENTIFIER';
 }
 
 function getWcsVersion(capabilities) {
