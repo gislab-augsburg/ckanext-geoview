@@ -315,7 +315,7 @@ ckan.module('wcspreview', function(jQuery, _) {
           params.HEIGHT = size[1];
         }
       } else {
-        params.COVERAGE = coverage.id;
+        params.IDENTIFIER = coverage.id;
         if (bbox) {
           params.BOUNDINGBOX = bbox.join(',') + ',' + getWcs11BboxCrs(envelope, this.map);
         }
@@ -662,17 +662,18 @@ function constrainSize(width, height, maxSize) {
 function preferredFormat(xml) {
   var formats = [];
   localElements(xml, 'formatSupported').each(function(i, node) {
-    formats.push($.trim($(node).text()).toLowerCase());
+    formats.push($.trim($(node).text()));
   });
   localElements(xml, 'supportedFormat').each(function(i, node) {
-    formats.push($.trim($(node).text()).toLowerCase());
+    formats.push($.trim($(node).text()));
   });
 
-  if (formats.indexOf('image/tiff') >= 0) {
-    return 'image/tiff';
-  }
-  if (formats.indexOf('geotiff') >= 0) {
-    return 'geotiff';
+  for (var i = 0; i < formats.length; i++) {
+    if (formats[i].toLowerCase() === 'image/tiff' ||
+        formats[i].toLowerCase() === 'image/geotiff' ||
+        formats[i].toLowerCase() === 'geotiff') {
+      return formats[i];
+    }
   }
   return 'image/tiff';
 }
