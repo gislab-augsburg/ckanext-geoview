@@ -315,9 +315,9 @@ ckan.module('wcspreview', function(jQuery, _) {
           params.HEIGHT = size[1];
         }
       } else {
-        params.IDENTIFIER = coverage.id;
+        params.COVERAGE = coverage.id;
         if (bbox) {
-          params.BOUNDINGBOX = bbox.join(',') + (envelope.crs ? ',' + normalizeCrs(envelope.crs) : '');
+          params.BOUNDINGBOX = bbox.join(',') + ',' + getWcs11BboxCrs(envelope, this.map);
         }
       }
 
@@ -565,6 +565,22 @@ function coverageIdParam(version) {
     return 'COVERAGE';
   }
   return 'IDENTIFIER';
+}
+
+function getWcs11BboxCrs(envelope, map) {
+  var crs = envelope && envelope.crs;
+  var view = map && map.getView && map.getView();
+  var projection = view && view.getProjection && view.getProjection();
+  var projectionCode = projection && projection.getCode && projection.getCode();
+  return toWcs11Crs(crs || projectionCode || 'EPSG:4326');
+}
+
+function toWcs11Crs(crs) {
+  var match = String(crs || '').match(/EPSG(?:::|\/0\/|:)(\d+)/i);
+  if (match) {
+    return 'urn:ogc:def:crs:EPSG::' + match[1];
+  }
+  return crs;
 }
 
 function getWcsVersion(capabilities) {
