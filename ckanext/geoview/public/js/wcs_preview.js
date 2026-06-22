@@ -417,7 +417,7 @@ ckan.module('wcspreview', function(jQuery, _) {
           if (nodata !== null && nodata !== undefined && !isNaN(nodata)) {
             sourceInfo.nodata = parseFloat(nodata);
           }
-          return sourceInfo;
+          return applySingleBandStretch(blob, sourceInfo);
         });
       }).then(function(sourceInfo) {
 
@@ -915,6 +915,71 @@ function getGeoTiffSourceInfo(blob) {
   }).catch(function() {
     return sourceInfo;
   });
+}
+
+function applySingleBandStretch(blob, sourceInfo) {
+  if (!sourceInfo.bands || sourceInfo.bands.length !== 1 || typeof GeoTIFF === 'undefined' || !GeoTIFF.fromBlob) {
+    return Promise.resolve(sourceInfo);
+  }
+
+  return GeoTIFF.fromBlob(blob).then(function(tiff) {
+    return tiff.getImage();
+  }).then(function(image) {
+    if (!image || !image.readRasters) {
+      return sourceInfo;
+    }
+    return image.readRasters({samples: [0], interleave: false}).then(function(rasters) {
+      var values = Array.isArray(rasters) ? rasters[0] : rasters;
+      var stretch = percentileStretch(values, sourceInfo.nodata, 2, 98);
+      if (stretch) {
+        sourceInfo.min = stretch.min;
+        sourceInfo.max = stretch.max;
+      }
+      return sourceInfo;
+    });
+  }).catch(function() {
+    return sourceInfo;
+  });
+}
+
+function percentileStretch(values, nodata, lowerPercent, upperPercent) {
+  if (!values || !values.length) {
+    return null;
+  }
+
+  var filtered = [];
+  var maxSamples = 200000;
+  var step = Math.max(1, Math.floor(values.length / maxSamples));
+  var hasNoData = nodata !== null && nodata !== undefined && !isNaN(nodata);
+
+  for (var i = 0; i < values.length; i += step) {
+    var value = values[i];
+    if (!isFinite(value) || (hasNoData && value === nodata)) {
+      continue;
+    }
+    filtered.push(value);
+  }
+
+  if (filtered.length < 2) {
+    return null;
+  }
+
+  filtered.sort(function(a, b) {
+    return a - b;
+  });
+
+  var min = percentileValue(filtered, lowerPercent);
+  var max = percentileValue(filtered, upperPercent);
+  if (!isFinite(min) || !isFinite(max) || min >= max) {
+    return null;
+  }
+
+  return {min: min, max: max};
+}
+
+function percentileValue(values, percent) {
+  var index = Math.round((values.length - 1) * percent / 100);
+  return values[Math.max(0, Math.min(values.length - 1, index))];
 }
 
 function asciiBytes(text) {
