@@ -241,7 +241,7 @@ class HilatsLayerSwitcher extends ol.control.Control {
             'width': listWidth + 'px',
             'max-height': maxListHeight + 'px',
             'box-sizing': 'border-box',
-            'padding': '13px 15px 12px 15px',
+            'padding': '20px 15px 12px 15px',
             'overflow': 'hidden'
         });
         $(this.panel).css({
