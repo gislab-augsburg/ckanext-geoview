@@ -91,26 +91,29 @@ ckan.module('wcspreview', function(jQuery, _) {
 
       this.fetchXml(withParams(serviceUrl, {
         SERVICE: 'WCS',
-        REQUEST: 'GetCapabilities'
+        REQUEST: 'GetCapabilities',
+        VERSION: '2.0.1'
       })).then(function(capabilities) {
         self.capabilities = capabilities;
         self.version = getWcsVersion(capabilities);
-        self.coverages = self.readCoverages(capabilities, requestedCoverageId);
-        if (!self.coverages.length) {
-          throw new Error('No WCS coverage found.');
-        }
-        self.coverages.forEach(function(coverage) {
-          self.coverageById[coverage.id] = coverage;
-        });
-        return Promise.all(self.coverages.map(function(coverage) {
-          return self.describeCoverage(coverage);
-        })).then(function() {
-          fitCoveragesBbox(self.map, self.coverages);
+        return self.loadCoverageMetadataLabels().then(function(metadataLabels) {
+          self.coverages = self.readCoverages(capabilities, requestedCoverageId, metadataLabels);
+          if (!self.coverages.length) {
+            throw new Error('No WCS coverage found.');
+          }
           self.coverages.forEach(function(coverage) {
-            self.setCoverageVisible(coverage, true);
+            self.coverageById[coverage.id] = coverage;
           });
-          self.map.on('moveend', function() {
-            self.scheduleVisibleCoverageReloads();
+          return Promise.all(self.coverages.map(function(coverage) {
+            return self.describeCoverage(coverage);
+          })).then(function() {
+            fitCoveragesBbox(self.map, self.coverages);
+            self.coverages.forEach(function(coverage) {
+              self.setCoverageVisible(coverage, true);
+            });
+            self.map.on('moveend', function() {
+              self.scheduleVisibleCoverageReloads();
+            });
           });
         });
       }).catch(function(error) {
@@ -159,27 +162,73 @@ ckan.module('wcspreview', function(jQuery, _) {
       });
     },
 
-    readCoverages: function(capabilities, requestedCoverageId) {
+    loadCoverageMetadataLabels: function() {
+      var self = this;
+      var versions = ['1.1.2', '1.0.0'];
+
+      return Promise.all(versions.map(function(version) {
+        return self.fetchXml(withParams(self.serviceUrl, {
+          SERVICE: 'WCS',
+          REQUEST: 'GetCapabilities',
+          VERSION: version,
+          ACCEPTVERSIONS: version
+        })).then(function(capabilities) {
+          return coverageMetadataLabels(capabilities);
+        }).catch(function() {
+          return {};
+        });
+      })).then(function(labelMaps) {
+        var labels = {};
+        labelMaps.forEach(function(labelMap) {
+          Object.keys(labelMap).forEach(function(id) {
+            if (!labels[id]) {
+              labels[id] = labelMap[id];
+            }
+          });
+        });
+        return labels;
+      });
+    },
+
+    readCoverages: function(capabilities, requestedCoverageId, metadataLabels) {
       var coverages = [];
       var defaultOpacity = this.defaultOpacity;
       var summaries = localElements(capabilities, 'CoverageSummary');
       var list = summaries.length ? summaries : localElements(capabilities, 'CoverageOfferingBrief');
+      var fallbackCoverageId = numericCoverageIdFallback(requestedCoverageId);
+      var coverageItems = [];
+      var exactRequestedCoverage = false;
 
       list.each(function(i, node) {
         var coverageId = firstLocalText(node, ['CoverageId']);
         var identifier = firstLocalText(node, ['Identifier']);
         var name = firstLocalText(node, ['name']);
         var id = coverageId || identifier || name;
-        if (!id || (requestedCoverageId && !matchesCoverageId(requestedCoverageId, coverageId, identifier, name))) {
+        if (!id) {
           return;
         }
-        coverages.push({
+        exactRequestedCoverage = exactRequestedCoverage || requestedCoverageId === id;
+        coverageItems.push({
           id: id,
           coverageId: coverageId,
           identifier: identifier,
           name: name,
-          title: firstLocalText(node, ['Title', 'label']) || id,
-          bbox: readWgs84Bbox(node),
+          title: firstLocalText(node, ['Title', 'label']),
+          bbox: readWgs84Bbox(node)
+        });
+      });
+
+      coverageItems.forEach(function(item) {
+        if (requestedCoverageId && item.id !== requestedCoverageId && (exactRequestedCoverage || item.id !== fallbackCoverageId)) {
+          return;
+        }
+        coverages.push({
+          id: item.id,
+          coverageId: item.coverageId,
+          identifier: item.identifier,
+          name: item.name,
+          title: item.title || metadataLabels[item.id] || item.id,
+          bbox: item.bbox,
           opacity: defaultOpacity,
           selected: false,
           loading: false,
@@ -551,10 +600,39 @@ function firstLocalText(root, names) {
   return '';
 }
 
-function matchesCoverageId(requestedCoverageId, coverageId, identifier, name) {
-  return requestedCoverageId === coverageId ||
-    requestedCoverageId === identifier ||
-    requestedCoverageId === name;
+function numericCoverageIdFallback(requestedCoverageId) {
+  var value = String(requestedCoverageId || '').trim();
+  return /^\d+$/.test(value) ? 'Coverage' + value : null;
+}
+
+function coverageMetadataLabels(capabilities) {
+  var labels = {};
+  var summaries = localElements(capabilities, 'CoverageSummary');
+  var list = summaries.length ? summaries : localElements(capabilities, 'CoverageOfferingBrief');
+
+  list.each(function(i, node) {
+    var title = firstLocalText(node, ['Title', 'label']);
+    var ids = [
+      firstLocalText(node, ['CoverageId']),
+      firstLocalText(node, ['Identifier']),
+      firstLocalText(node, ['name'])
+    ];
+
+    if (!title) {
+      return;
+    }
+
+    ids.forEach(function(id) {
+      if (id && !labels[id]) {
+        labels[id] = title;
+      }
+      if (/^\d+$/.test(id || '') && !labels['Coverage' + id]) {
+        labels['Coverage' + id] = title;
+      }
+    });
+  });
+
+  return labels;
 }
 
 function coverageIdParam(version) {
