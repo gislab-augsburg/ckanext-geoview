@@ -2004,8 +2004,14 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
 
                 }
 
-                $_.each(capas.Capability.Layer.Layer, processLayerCandidate)
-
+                var rootLayer = capas.Capability && capas.Capability.Layer;
+                if (rootLayer) {
+                    if (rootLayer.Layer) {
+                        $_.each(rootLayer.Layer, processLayerCandidate)
+                    } else {
+                        processLayerCandidate(rootLayer)
+                    }
+                }
                 $.when.apply($, deferredLayers).then(
                     function() {
                         deferredResult.resolve(Array.from(arguments));
