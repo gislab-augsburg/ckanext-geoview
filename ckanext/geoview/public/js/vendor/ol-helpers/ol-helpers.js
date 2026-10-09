@@ -2901,6 +2901,16 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
         var attribution;
 
         var deferredResult = $.Deferred()
+        var initialExtent = mapConfig['initial_extent'] && eval(mapConfig['initial_extent']);
+        if (!initialExtent) {
+            initialExtent = mapConfig['initialExtent'] && eval(mapConfig['initialExtent']);
+        }
+        var setInitialExtent = function(layer) {
+            if (initialExtent) {
+                layer.set('initialExtent', initialExtent);
+            }
+        };
+
 
         try {
             if (!mapConfig.type) {
@@ -2914,6 +2924,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         })
                     });
 
+                setInitialExtent(baseMapLayer);
                 deferredResult.resolve([baseMapLayer]);
             } else if (mapConfig.type.toLowerCase() == 'osm') {
                 urls = mapConfig['url'];
@@ -2927,6 +2938,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         })
                     });
 
+                setInitialExtent(baseMapLayer);
                 deferredResult.resolve([baseMapLayer]);
 
             } else if (mapConfig.type.toLowerCase() == 'stamen') {
@@ -2940,6 +2952,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     })
                 });
 
+                setInitialExtent(baseMapLayer);
                 deferredResult.resolve([baseMapLayer]);
 
             } else if (mapConfig.type == 'tms') {
@@ -2972,6 +2985,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                     })
                 });
 
+                setInitialExtent(baseMapLayer);
                 deferredResult.resolve([baseMapLayer]);
             } else if (mapConfig.type == 'XYZ') {
                 // Custom XYZ layer
@@ -2991,15 +3005,13 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         })
                     });
 
+                setInitialExtent(baseMapLayer);
                 deferredResult.resolve([baseMapLayer]);
             } else if (mapConfig.type == 'wmts') {
 
-                var extent = mapConfig['extent'] && eval(mapConfig['extent']);
                 var layerCallback = function (layer, title_suffix) {
                     layer.set('type', 'base');
-                    if (extent) {
-                        layer.setExtent(extent);
-                    }
+                    setInitialExtent(layer);
                     mapConfig['dimensions'] && layer.getSource().updateDimensions(mapConfig['dimensions']);
                     mapConfig['title'] && layer.set('title', mapConfig['title'] + (title_suffix ? (' ' + title_suffix) : ''));
                     /* TODO
@@ -3066,6 +3078,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                         })
                     })
                 }
+                setInitialExtent(baseMapLayer);
                 deferredResult.resolve([baseMapLayer]);
 
             } else if (mapConfig.type == 'arcgis_rest_img') {
@@ -3075,6 +3088,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
 
                 var layerCallback = function(layer, title_suffix) {
                     layer.set('type', isBaseLayer ? 'base' : undefined);
+                    setInitialExtent(layer);
                     mapConfig['title'] && layer.set('title', mapConfig['title'] + (title_suffix ? (' ' + title_suffix) : ''));
                 };
 
@@ -3328,7 +3342,7 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
 
         // by default stretch the map to the basemap extent or to the world
         map.getView().fit(
-                baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, map.getView().getProjection()),
+                baseMapLayer.get('initialExtent') || baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, map.getView().getProjection()),
             {constrainResolution: false}
         );
 

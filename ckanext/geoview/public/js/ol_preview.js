@@ -211,7 +211,7 @@
                 var map = this.map = new OL_HELPERS.LoggingMap(options);
                 // by default stretch the map to the basemap extent or to the world
                 map.getView().fit(
-                        baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, map.getView().getProjection()),
+                        baseMapLayer.get('initialExtent') || baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, map.getView().getProjection()),
                     {constrainResolution: false}
                 );
 

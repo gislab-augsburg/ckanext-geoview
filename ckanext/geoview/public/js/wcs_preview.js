@@ -58,7 +58,7 @@ ckan.module('wcspreview', function(jQuery, _) {
         });
 
         self.map.getView().fit(
-          baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, self.map.getView().getProjection()),
+          baseMapLayer.get('initialExtent') || baseMapLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, self.map.getView().getProjection()),
           {constrainResolution: false}
         );
 

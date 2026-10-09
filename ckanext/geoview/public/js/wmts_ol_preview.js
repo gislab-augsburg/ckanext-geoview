@@ -237,7 +237,7 @@
 
                 if (firstBaseLayer) {
                     this.map.getView().fit(
-                        firstBaseLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, this.map.getView().getProjection()),
+                        firstBaseLayer.get('initialExtent') || firstBaseLayer.getExtent() || ol.proj.transformExtent(OL_HELPERS.WORLD_BBOX, OL_HELPERS.EPSG4326, this.map.getView().getProjection()),
                         {constrainResolution: false}
                     );
                 }
