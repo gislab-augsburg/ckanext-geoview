@@ -2994,8 +2994,12 @@ ol.proj.addProjection(createEPSG4326Proj('EPSG:4326:LONLAT', 'enu'));
                 deferredResult.resolve([baseMapLayer]);
             } else if (mapConfig.type == 'wmts') {
 
+                var extent = mapConfig['extent'] && eval(mapConfig['extent']);
                 var layerCallback = function (layer, title_suffix) {
                     layer.set('type', 'base');
+                    if (extent) {
+                        layer.setExtent(extent);
+                    }
                     mapConfig['dimensions'] && layer.getSource().updateDimensions(mapConfig['dimensions']);
                     mapConfig['title'] && layer.set('title', mapConfig['title'] + (title_suffix ? (' ' + title_suffix) : ''));
                     /* TODO
